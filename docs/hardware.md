@@ -12,7 +12,7 @@ This document tracks the current hardware assigned to the homelab and its intend
 Primary virtualization host
 
 **Operating System**  
-Proxmox VE
+Proxmox VE 9.1.0
 
 **Purpose**  
 Run virtual machines and supporting infrastructure services
@@ -40,7 +40,7 @@ Run virtual machines and supporting infrastructure services
 Dedicated NAS server
 
 **Operating System**  
-Ubuntu Server
+Ubuntu Server 24.04
 
 **Purpose**  
 Provide centralized network storage for media and future shared data
@@ -68,7 +68,7 @@ Provide centralized network storage for media and future shared data
 Media server
 
 **Operating System**  
-Ubuntu Server
+Ubuntu Server 24.04
 
 **Purpose**  
 Run Jellyfin and serve media clients
@@ -92,7 +92,7 @@ Run Jellyfin and serve media clients
 Active lab node for experimentation and future cluster use
 
 **Operating System**  
-Ubuntu Server
+Ubuntu Server 24.04
 
 **Purpose**  
 Support experimentation, lightweight services, and future Kubernetes or orchestration work
