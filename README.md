@@ -63,16 +63,26 @@ The environment is organized around a few core principles:
 
 ## Documentation Areas
 
-- `docs/overview.md`: high-level architecture and design decisions
-- `docs/hardware.md`: hardware inventory and node capabilities
-- `docs/network.md`: logical network layout, addressing, and connectivity
-- `docs/nodes/`: node-specific documentation
-- `docs/services/`: service-specific documentation
-- `docs/runbooks/`: operational procedures
-- `inventory/`: infrastructure inventory and addressing plans
-- `configs/`: sanitized configuration references and examples
-- `scripts/`: maintenance and automation scripts
-- `diagrams/`: topology and rack diagrams
+## Key Documentation
+
+- [`docs/overview.md`](docs/overview.md) — high-level architecture and design direction
+- [`docs/hardware.md`](docs/hardware.md) — hardware inventory and node capabilities
+- [`docs/network.md`](docs/network.md) — network layout, addressing, and access model
+- [`docs/nodes/virt.md`](docs/nodes/virt.md) — Proxmox host documentation
+- [`docs/nodes/vault.md`](docs/nodes/vault.md) — NAS node documentation
+- [`docs/nodes/atlas.md`](docs/nodes/atlas.md) — Jellyfin node documentation
+- [`docs/nodes/rpi-01.md`](docs/nodes/rpi-01.md) — Raspberry Pi lab node documentation
+- [`docs/nodes/monitor.md`](docs/nodes/monitor.md) — monitoring VM documentation
+- [`docs/services/ai-stack.md`](docs/services/ai-stack.md) — AI workload overview
+- [`docs/services/jellyfin.md`](docs/services/jellyfin.md) — Jellyfin service documentation
+- [`docs/services/nas.md`](docs/services/nas.md) — NAS service documentation
+- [`docs/services/minecraft.md`](docs/services/minecraft.md) — planned Minecraft service
+- [`docs/runbooks/backups.md`](docs/runbooks/backups.md) — backup planning
+- [`docs/runbooks/restore.md`](docs/runbooks/restore.md) — restore and recovery direction
+- [`docs/runbooks/maintenance.md`](docs/runbooks/maintenance.md) — maintenance guidance
+- [`docs/roadmap.md`](docs/roadmap.md) — current priorities and future plans
+- [`inventory/ip-plan.md`](inventory/ip-plan.md) — IP allocation reference
+- [`inventory/storage-layout.md`](inventory/storage-layout.md) — storage distribution and migration state
 
 ## Status
 
