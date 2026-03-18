@@ -146,6 +146,3 @@ The following details should be completed as the hardware inventory is refined:
 - network interfaces
 - power characteristics
 - rack placement
-- current operating system versions
-- exact laptop memory capacity
-- personal workstation hardware details if needed for documentation
