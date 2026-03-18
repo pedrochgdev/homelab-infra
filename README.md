@@ -54,20 +54,12 @@ The environment is organized around a few core principles:
 
 ## Repository Structure
 
-.
-├─ README.md
-├─ docs/
-│  ├─ overview.md
-│  ├─ hardware.md
-│  ├─ network.md
-│  ├─ nodes/
-│  ├─ services/
-│  ├─ runbooks/
-│  └─ roadmap.md
-├─ inventory/
-├─ configs/
-├─ scripts/
-└─ diagrams/
+- `README.md` — repository overview
+- `docs/` — architecture, nodes, services, and operational documentation
+- `inventory/` — hardware, addressing, and storage inventory
+- `configs/` — sanitized configuration references
+- `scripts/` — maintenance and automation scripts
+- `diagrams/` — topology and rack diagrams
 
 ## Documentation Areas
 
