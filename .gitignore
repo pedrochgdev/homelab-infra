@@ -1,0 +1,15 @@
+# Claude
+CLAUDE.md
+Claude.md
+.claude/
+
+# Environment files and secrets
+.env
+*.env
+
+# Editor and OS noise
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
+*.swp
