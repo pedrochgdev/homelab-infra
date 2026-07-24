@@ -2,9 +2,11 @@
 
 ## Summary
 
-`atlas` is the current media server node in the homelab. It runs Jellyfin on Ubuntu Server through Docker and currently stores its media library locally.
+`atlas` is the media server node in the homelab. It runs Jellyfin on Ubuntu Server through Docker.
 
-Its main architectural change still pending is the migration of media storage from local disk to the NAS on `vault`.
+The migration of media storage from local disk to the NAS on `vault` is complete:
+the library is now mounted over SMB from `vault` and no longer consumes local
+storage. `atlas` hosts the application; `vault` holds the data.
 
 ## Role
 
@@ -18,10 +20,11 @@ Its main architectural change still pending is the migration of media storage fr
 
 ## Hardware
 
-- CPU: Intel Core i5, approximately 7th generation
+- CPU: Intel Core i5-7300HQ (4 cores)
 - Memory: 8 GB RAM
-- GPU: NVIDIA GeForce GTX 1060
-- Local Storage: 500 GB
+- GPU: NVIDIA GeForce GTX 1050 Mobile
+- Integrated graphics: Intel HD Graphics 630
+- Local Storage: 500 GB SSD (~439 GB usable)
 
 ## Service Stack
 
@@ -31,14 +34,29 @@ Its main architectural change still pending is the migration of media storage fr
 
 ## Storage Layout
 
-Current local paths:
+Container bind mounts:
 
-- Media: `/srv/media`
-- Jellyfin config: `/srv/jellyfin/config`
-- Jellyfin cache: `/srv/jellyfin/cache`
-- Compose file: `/srv/jellyfin/docker-compose.yml`
+| Host path | Container path | Backing |
+|---|---|---|
+| `/mnt/media_nas` | `/media` | SMB share `//192.168.1.21/media` on `vault` |
+| `/srv/jellyfin/config` | `/config` | Local disk |
+| `/srv/jellyfin/cache` | `/cache` | Local disk |
 
-At present, media remains local to `atlas`.
+The compose file lives at `/srv/jellyfin/docker-compose.yml`.
+
+### NAS Mount
+
+The media share is mounted through a systemd automount (`x-systemd.automount`)
+rather than a static `fstab` entry, so the mount is established on first access
+instead of at boot. Relevant mount options:
+
+- protocol: CIFS `3.1.1`
+- SMB user: `jellyfin_smb` (a dedicated account, distinct from `drocho`)
+- `soft` — I/O fails rather than hanging indefinitely if `vault` is unreachable
+- `uid`/`gid` forced to `1000` so the container sees consistent ownership
+
+Configuration and cache remain on local disk deliberately, so Jellyfin metadata
+does not depend on NAS availability.
 
 ## Jellyfin Behavior
 
@@ -49,28 +67,28 @@ At present, media remains local to `atlas`.
 
 ## Access Model
 
-Jellyfin is currently intended for internal LAN access.
+Jellyfin is intended for internal LAN and VPN access. It listens on port `8096`
+and is also reachable through the reverse proxy on `rpi-01`.
 
-There is no direct public exposure. When remote access is needed, it is reached indirectly through the personal workstation using Tailscale and remote desktop access into the LAN environment.
+There is no public exposure of this service. Remote access is available through
+the WireGuard VPN on `rpi-01`, or indirectly through the personal workstation
+using Tailscale and remote desktop.
 
 ## Current State
 
-The service is active and functional.
-
-Main architectural limitation:
-- media storage is still local rather than centralized on `vault`
-
-## Planned Changes
-
-The main next step for `atlas` is:
-
-- migrate media storage from local disk to the NAS
-
-Planned transport for that migration is currently expected to be SMB, although this may change later if a better option is selected.
+The service is active and functional, and has been running continuously for
+months. Media storage is centralized on `vault` as intended.
 
 ## Operational Notes
 
-- Jellyfin is currently the only service running on this node
+- Jellyfin is the only container currently running, though Docker holds an
+  additional network (`infra_net`) suggesting other stacks have been defined
 - content acquisition and media workflow are still relatively manual
 - the host may be renamed later to better reflect its service role
-- the service works, but the surrounding media workflow is still expected to evolve
+- local disk usage sits around 146 GB of 439 GB after the media migration
+
+## Planned Changes
+
+- verify hardware transcoding still behaves correctly against NAS-backed media
+- confirm playback behavior when `vault` is unavailable, given the `soft` mount
+- document the compose stack in `configs/`

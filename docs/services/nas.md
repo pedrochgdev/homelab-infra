@@ -100,7 +100,9 @@ This is the active and documented access method for:
 Current share configuration characteristics:
 
 - authenticated access
-- only one active user at present: `drocho`
+- two accounts: `drocho` for interactive use and `jellyfin_smb` as a service
+  account used by `atlas` to mount the media share
+- both belong to the `nas` group (GID 1001)
 - read/write enabled
 - group-based permission model using `nas`
 - inherited permissions enabled
@@ -113,14 +115,20 @@ Current intent:
 
 The NAS is already functional and in daily use as a storage node.
 
-However, operational maturity is still incomplete in the following areas:
+The RAID 1 array is healthy, with both members in sync. Roughly 816 GB of 3.6 TB
+is in use, broken down as 769 GB of content, 39 GB of user data, and 9.5 GB of
+backups.
+
+Media migration from `atlas` is complete, and disk health monitoring is running:
+`smartmontools`, `mdmonitor`, and `smartctl_exporter` on port `9633`, scraped by
+`monitor`.
+
+Operational maturity is still incomplete in the following areas:
 
 - no defined backup policy yet
 - no documented recovery workflow yet
-- no SMART monitoring yet
-- no formal disk health alerting yet
+- no alerting rules on top of the collected SMART metrics
 - no tested incident response process yet
-- media has not yet been migrated from `atlas`
 
 ## Data Protection Notes
 
@@ -141,9 +149,8 @@ A real protection model still needs to define:
 
 The following items are current priorities:
 
-- move Jellyfin media storage from `atlas` to `vault`
 - define backup policy by directory or data type
-- introduce SMART monitoring and storage health checks
+- define alerting rules on top of the existing SMART and RAID metrics
 - document recovery procedures
 - improve storage security posture
 - refine permission and access model before expanding to additional users
@@ -153,7 +160,7 @@ The following items are current priorities:
 Current known risk areas include:
 
 - absence of independent backups
-- absence of storage health monitoring
+- disk health metrics are collected but not alerted on
 - lack of formal recovery testing
-- single-user operational model without broader access controls
+- narrow access model without broader controls
 - incomplete separation between active storage and protected backup strategy

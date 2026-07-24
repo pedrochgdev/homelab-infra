@@ -12,25 +12,28 @@ This document tracks the current hardware assigned to the homelab and its intend
 Primary virtualization host
 
 **Operating System**  
-Proxmox VE 9.1.0
+Proxmox VE 9.1.6 (Debian 13 "trixie", kernel `6.17.13-2-pve`)
 
 **Purpose**  
 Run virtual machines and supporting infrastructure services
 
 **Hardware**
-- CPU: Intel Core i7-9700K
+- CPU: Intel Core i7-9700K (8 cores)
 - Memory: 16 GB DDR4 RAM
-- GPU: NVIDIA GeForce GTX 2060
-- Storage: 500 GB WD Blue SSD
+- GPU: NVIDIA GeForce RTX 2060, passed through to `synthia`
+- Integrated graphics: Intel UHD Graphics 630, used by the host
+- Storage: 500 GB SSD (`sda`, ~466 GB), LVM-thin `local-lvm` for VM disks
 
 **Current Virtual Machines**
-- `synthia`: AI workload VM hosting an Ollama model
-- `monitor`: monitoring VM running Prometheus and Grafana
+- VMID 100 `ia`: AI workload VM, guest hostname `synthia`, with RTX 2060 passthrough
+- VMID 101 `monitor`: monitoring VM running Prometheus and Grafana
+- VMID 102 `dns`: secondary AdGuard Home instance at `192.168.1.52`
 
 **Notes**
 - Main compute node for virtualization
+- The Proxmox VM name for the AI workload is `ia`, while the guest hostname is `synthia`. Both names appear across the documentation and tooling.
 - Current AI workload behavior suggests VRAM is a more significant constraint than system RAM for the existing Ollama deployment
-- VM allocation and storage layout should be documented separately
+- Host memory is fairly committed: roughly 10 GB of 16 GB in use with three VMs running
 
 ---
 
@@ -46,7 +49,7 @@ Ubuntu Server 24.04
 Provide centralized network storage for media and future shared data
 
 **Hardware**
-- CPU: Intel Core i7-3378
+- CPU: Intel Core i7-3770 (8 threads)
 - Memory: 8 GB DDR3 RAM
 - GPU: None
 - OS Storage: 1 TB WD Blue HDD
@@ -74,14 +77,15 @@ Ubuntu Server 24.04
 Run Jellyfin and serve media clients
 
 **Hardware**
-- CPU: Intel Core i5-7300HQ
+- CPU: Intel Core i5-7300HQ (4 cores)
 - Memory: 8 GB RAM
-- GPU: NVIDIA GeForce GTX 1060
-- Storage: 500 GB SSD
+- GPU: NVIDIA GeForce GTX 1050 Mobile
+- Integrated graphics: Intel HD Graphics 630
+- Storage: 500 GB SSD (~439 GB usable)
 
 **Notes**
-- Jellyfin is currently hosted here
-- Media storage is expected to move to `vault` over the network
+- Laptop hardware; Jellyfin runs here in Docker
+- Media storage migration to `vault` is complete: the library is mounted over SMB
 - Hostname may be renamed in the future to better reflect its service role
 
 ---
@@ -89,23 +93,24 @@ Run Jellyfin and serve media clients
 ### rpi-01
 
 **Role**  
-Active lab node for experimentation and future cluster use
+Edge node: internal DNS, WireGuard VPN endpoint, reverse proxy, Cloudflare tunnel
 
 **Operating System**  
-Ubuntu Server 24.04
+Ubuntu Server 24.04.4 (kernel `6.8.0-1057-raspi`, `aarch64`)
 
 **Purpose**  
-Support experimentation, lightweight services, and future Kubernetes or orchestration work
+Serve core network functions at the edge of the homelab; secondarily support experimentation and future orchestration work
 
 **Hardware**
 - Model: Raspberry Pi 5
 - Memory: 16 GB RAM
-- Storage: 512 GB NVMe
+- Storage: 512 GB NVMe (~477 GB usable)
 
 **Notes**
-- First planned node in a future cluster-oriented lab environment
-- Can be used independently before a broader cluster is built
-- Intended for experimentation and learning
+- Runs AdGuard Home, nginx, WireGuard, and cloudflared
+- Load-bearing for DNS and VPN; not a disposable lab node anymore
+- Very low resource usage, so there is headroom for more workloads
+- Still the intended first node for future cluster work
 
 ---
 

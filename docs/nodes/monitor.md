@@ -19,8 +19,8 @@ It is already operational and serves as the central monitoring point for the env
 
 ## Host Platform
 
-- Hosted on: `virt`
-- Virtualization platform: Proxmox VE `9.1.0`
+- Hosted on: `virt` (VMID 101)
+- Virtualization platform: Proxmox VE `9.1.6`
 
 ## Resources
 
@@ -31,10 +31,31 @@ It is already operational and serves as the central monitoring point for the env
 
 ## Service Stack
 
-Current monitoring services:
+| Service | Version | Port |
+|---|---|---|
+| Prometheus | 3.10.0 | `9090` |
+| Grafana | 12.4.1 | `3000` |
+| nginx | — | `80` |
 
-- Prometheus
-- Grafana
+nginx serves a static page from `/var/www/display`, published internally as
+`display.home.arpa` through the reverse proxy on `rpi-01`. This is a display or
+dashboard surface rather than part of the monitoring stack itself.
+
+## Scrape Targets
+
+Prometheus is configured with the following jobs:
+
+| Job | Targets |
+|---|---|
+| `prometheus` | `localhost:9090` |
+| `linux-nodes` | `node_exporter` on the homelab nodes, port `9100` |
+| `smartctl_vault` | `192.168.1.21:9633` — disk health on `vault` |
+| `windows_desktop` | `192.168.1.109:9182` — personal workstation |
+| `nvidia_desktop` | `192.168.1.109:9835` — workstation GPU metrics |
+
+Note that the personal workstation is an active monitoring target even though it
+is documented elsewhere as outside the core infrastructure. Its address sits
+inside the DHCP pool, so these targets break if the lease changes.
 
 ## Purpose
 

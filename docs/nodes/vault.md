@@ -20,21 +20,30 @@ The system is already operational. Current work is focused on improving data pro
 
 ## Hardware
 
-- CPU: Intel Core i7-3378
+- CPU: Intel Core i7-3770 (8 threads)
 - Memory: 8 GB DDR3 RAM
 - GPU: None
-- OS Storage: 1 TB WD Blue HDD
-- NAS Storage: 2 × Toshiba N300 4 TB
+- OS Storage: 1 TB WD Blue HDD (`sda`, ~931 GB)
+- NAS Storage: 2 × Toshiba N300 4 TB (`sdb`, `sdc`)
 - RAID Layout: RAID 1 (mirror)
 
 ## Storage Design
 
 The NAS separates the operating system from the main data array:
 
-- OS runs on a dedicated 1 TB WD Blue HDD
+- OS runs on a dedicated 1 TB WD Blue HDD, partitioned with LVM
 - user and shared data live on a mirrored RAID 1 array
 - RAID is built with `mdadm`
 - data filesystem is `ext4`
+
+The OS disk uses separate logical volumes so that log or cache growth in `/var`
+cannot fill the root filesystem:
+
+| Volume | Size | Mount |
+|---|---|---|
+| `vg0-lv_root` | 100 GB | `/` |
+| `vg0-lv_var` | 40 GB | `/var` |
+| `vg0-lv_swap` | 8 GB | swap |
 
 ## RAID Implementation
 
@@ -82,7 +91,9 @@ The NAS is currently exposed through SMB.
 
 At present:
 - access is authenticated
-- the only active user is `drocho`
+- two accounts exist: `drocho` for interactive use, and `jellyfin_smb` as a
+  dedicated service account used by `atlas` to mount the media share
+- both accounts belong to the `nas` group (GID 1001)
 - group ownership is centered around the `nas` group
 
 ## SMB Shares
@@ -110,15 +121,27 @@ Current share behavior includes:
 
 ## Current State
 
-`vault` is operational and already serving as the main NAS node.
+`vault` is operational and serving as the main NAS node.
 
-However, several operational areas are still pending:
+Array and capacity:
 
-- SMART monitoring is not yet configured
-- storage health monitoring is not yet formalized
+- `/dev/md0` is healthy, both members present and in sync (`[2/2] [UU]`)
+- 3.6 TB total, roughly 816 GB used (about 23 percent)
+- current distribution: content 769 GB, users 39 GB, backups 9.5 GB
+
+Health monitoring is in place:
+
+- `smartmontools` and `mdmonitor` are running
+- `smartctl_exporter` publishes disk health metrics on port `9633`
+- `monitor` scrapes that exporter through a dedicated `smartctl_vault` job
+
+Media migration from `atlas` is complete; the media share is consumed over SMB.
+
+Still pending:
+
 - backup policy is not yet defined
 - recovery procedures are not yet documented
-- Jellyfin has not yet migrated its media library to the NAS
+- alerting rules on top of the SMART metrics are not yet defined
 
 ## Operational Priorities
 
@@ -126,8 +149,7 @@ The main current priorities for `vault` are:
 
 - define backup policy by data type
 - define recovery expectations and procedures
-- add health monitoring for disks and array state
-- move media storage from `atlas` to `vault`
+- turn the existing SMART and RAID metrics into actual alerts
 - improve storage security and operational discipline
 
 ## Risk Notes

@@ -36,9 +36,11 @@ The homelab currently includes the following functional areas:
 | PC1 | `virt` | Proxmox host for infrastructure and virtual machines | Active |
 | VM | `synthia` | AI workload VM running Ollama | Active |
 | VM | `monitor` | Monitoring VM running Prometheus and Grafana | Active |
+| VM | `dns` | Secondary internal DNS running AdGuard Home | Active |
 | PC2 | `vault` | NAS server running Ubuntu Server on bare metal | Active |
 | Laptop | `atlas` | Jellyfin media server | Active |
-| Raspberry Pi 5 | `rpi-01` | Active lab node for experimentation and future cluster use | Active |
+| Raspberry Pi 5 | `rpi-01` | Edge node: internal DNS, WireGuard VPN, reverse proxy | Active |
+| Switch | `switch` | TP-Link SG3428 managed switch | Active |
 | Personal PC | N/A | Workstation for development, administration, and project work | Active |
 
 ## Architecture Principles
@@ -61,8 +63,6 @@ The environment is organized around a few core principles:
 - `scripts/` — maintenance and automation scripts
 - `diagrams/` — topology and rack diagrams
 
-## Documentation Areas
-
 ## Key Documentation
 
 - [`docs/overview.md`](docs/overview.md) — high-level architecture and design direction
@@ -71,8 +71,9 @@ The environment is organized around a few core principles:
 - [`docs/nodes/virt.md`](docs/nodes/virt.md) — Proxmox host documentation
 - [`docs/nodes/vault.md`](docs/nodes/vault.md) — NAS node documentation
 - [`docs/nodes/atlas.md`](docs/nodes/atlas.md) — Jellyfin node documentation
-- [`docs/nodes/rpi-01.md`](docs/nodes/rpi-01.md) — Raspberry Pi lab node documentation
+- [`docs/nodes/rpi-01.md`](docs/nodes/rpi-01.md) — edge node documentation
 - [`docs/nodes/monitor.md`](docs/nodes/monitor.md) — monitoring VM documentation
+- [`docs/nodes/dns.md`](docs/nodes/dns.md) — secondary DNS VM documentation
 - [`docs/services/ai-stack.md`](docs/services/ai-stack.md) — AI workload overview
 - [`docs/services/jellyfin.md`](docs/services/jellyfin.md) — Jellyfin service documentation
 - [`docs/services/nas.md`](docs/services/nas.md) — NAS service documentation

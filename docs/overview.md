@@ -31,10 +31,11 @@ The main objectives of the homelab are:
 
 `virt` is the primary virtualization host and currently runs Proxmox. It is the main compute node for infrastructure virtual machines and selected service workloads.
 
-At present, it hosts at least two virtual machines:
+At present, it hosts three virtual machines:
 
-- `synthia`, which runs AI-related workloads and hosts an Ollama model
-- `monitor`, which runs Prometheus and Grafana for infrastructure monitoring
+- `synthia` (VMID 100, named `ia` in Proxmox), which runs AI-related workloads and hosts an Ollama model
+- `monitor` (VMID 101), which runs Prometheus and Grafana for infrastructure monitoring
+- `dns` (VMID 102), which runs a secondary AdGuard Home resolver
 
 This node is the main platform for virtualization and service consolidation.
 
@@ -44,21 +45,21 @@ This node is the main platform for virtualization and service consolidation.
 
 The NAS is already operational. It uses a dedicated OS disk and a mirrored RAID 1 storage array built with two 4 TB Toshiba N300 drives for data storage.
 
-Current work is focused on data protection strategy, backup planning, recovery procedures, and the migration of media storage so Jellyfin no longer depends on local storage.
+The media migration is complete: Jellyfin on `atlas` now consumes the library over SMB rather than local disk. Current work is focused on data protection strategy, backup planning, and recovery procedures.
 
 This node is intentionally separated from the main AI workload environment in order to keep storage stable and predictable.
 
 ### atlas
 
-`atlas` currently serves as the media node and runs Jellyfin on Ubuntu Server. It is an active service node, but its media library is expected to be moved to `vault` so that storage and application hosting are properly separated.
+`atlas` serves as the media node and runs Jellyfin in Docker on Ubuntu Server. Its media library now lives on `vault` and is mounted over SMB, so storage and application hosting are properly separated.
 
 The service layer may remain on `atlas` or be moved later if needed.
 
 ### rpi-01
 
-`rpi-01` is a Raspberry Pi 5 with 16 GB RAM and NVMe storage. It is an active lab node intended for experimentation, lightweight services, and future orchestration or Kubernetes-related work.
+`rpi-01` is a Raspberry Pi 5 with 16 GB RAM and NVMe storage. It has become the edge node of the homelab: it serves internal DNS through AdGuard Home, terminates the WireGuard VPN, runs the nginx reverse proxy that fronts internal services, and hosts the Cloudflare tunnel used to publish one personal project externally.
 
-It should not be treated only as a placeholder for a future cluster. It is part of the current lab and can be used independently while the broader cluster design is still being defined.
+This makes it load-bearing rather than experimental. Cluster and Kubernetes work remain a longer-term goal for this node, but its current role is operational, and the concentration of edge functions on a single host is a known architectural weakness.
 
 ### Personal workstation
 
@@ -74,12 +75,13 @@ Roles are defined clearly enough to maintain operational structure, but the over
 
 The current infrastructure priorities are:
 
-1. formalize backup and recovery strategy for `vault`
-2. move media storage from `atlas` to `vault`
-3. continue using `virt` as the main virtualization node
-4. document node roles, services, and dependencies more formally
-5. assign practical workloads to `rpi-01` while preserving its future role in cluster experimentation
-6. keep the homelab usable as a learning platform for infrastructure and security topics
+1. restore GPU acceleration on `synthia`, which currently runs inference on CPU
+2. formalize backup and recovery strategy for `vault`
+3. reduce the concentration of edge roles on `rpi-01` and isolate public ingress from internal services
+4. define an IPv6 posture, since every node holds a globally routable address
+5. continue using `virt` as the main virtualization node
+6. document node roles, services, and dependencies more formally
+7. keep the homelab usable as a learning platform for infrastructure and security topics
 
 ## Architectural Notes
 

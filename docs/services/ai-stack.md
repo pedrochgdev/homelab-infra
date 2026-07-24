@@ -12,10 +12,17 @@ The AI workflow is currently divided as follows:
 
 ### synthia
 
-`synthia` hosts the LLM component of the stack.
+`synthia` hosts the LLM component of the stack. It is VMID 100 on `virt`, named
+`ia` at the hypervisor level.
 
-Current model:
-- `llama3.1:8b-instruct-q5_K_M`
+Models currently present:
+
+| Model | Size | Notes |
+|---|---|---|
+| `llama3.1:8b-instruct-q5_K_M` | 5.7 GB | Primary instruct model |
+| `Brain:latest` | 5.7 GB | Custom model |
+| `avatar_brain:latest` | 4.7 GB | Custom model for the avatar project |
+| `llama3:8b` | 4.7 GB | Earlier base model |
 
 Runtime:
 - Ollama
@@ -49,12 +56,33 @@ The current model is hybrid:
 
 ## Infrastructure Notes
 
-- the AI VM is hosted on `virt`
-- full GPU passthrough is enabled for `synthia`
-- current workload behavior suggests VRAM is the main hardware constraint rather than system RAM
+- the AI VM is hosted on `virt` as VMID 100
+- full GPU passthrough is configured for the RTX 2060 via `hostpci0: 0000:01:00`
+- the VM has 2 vCPUs and 4 GB RAM, with 34 GB of 117 GB disk in use
+
+## GPU Status
+
+**The GPU is currently not usable from inside the VM.** `nvidia-smi` fails with:
+
+```
+Failed to initialize NVML: Driver/library version mismatch
+NVML library version: 580.173
+```
+
+This means the kernel module loaded in the guest does not match the installed
+userspace driver libraries, which typically happens after a driver package
+upgrade without a subsequent reboot. Until this is resolved, Ollama falls back to
+CPU inference on 2 vCPUs, which makes response latency far worse than the
+hardware allows.
+
+Resolving this is the highest-value fix in the AI stack: the passthrough is
+already configured correctly at the hypervisor level, so the problem is confined
+to the guest.
 
 ## Current Limitations
 
+- GPU acceleration is broken in the guest, so inference runs on CPU
+- the VM has only 2 vCPUs, which is a poor fallback for CPU inference
 - the stack is split across multiple systems
 - not all components are consolidated into the homelab
 - hardware capacity limits how much can be moved to a single node

@@ -25,16 +25,54 @@ Current allocation ranges:
 | Hostname | IP Address | Type | Role | Platform | Status |
 |---|---|---|---|---|---|
 | `switch` | `192.168.1.10` | Network device | Managed switch | TP-Link SG3428 | Active |
-| `virt` | `192.168.1.20` | Physical host | Proxmox virtualization host | Proxmox VE 9.1.0 | Active |
-| `vault` | `192.168.1.21` | Physical host | NAS | Ubuntu Server 24.04 | Active |
-| `atlas` | `192.168.1.22` | Physical host | Jellyfin media server | Ubuntu Server 24.04 | Active |
-| `rpi-01` | `192.168.1.30` | Physical host | Raspberry Pi lab node | Ubuntu Server 24.04 | Active |
-| `monitor` | `192.168.1.50` | VM | Monitoring | Ubuntu Server 24.04 | Active |
-| `synthia` | `192.168.1.51` | VM | AI workload / Ollama | Ubuntu Server 24.04 | Active |
+| `virt` | `192.168.1.20` | Physical host | Proxmox virtualization host | Proxmox VE 9.1.6 | Active |
+| `vault` | `192.168.1.21` | Physical host | NAS | Ubuntu Server 24.04.4 | Active |
+| `atlas` | `192.168.1.22` | Physical host | Jellyfin media server | Ubuntu Server 24.04.4 | Active |
+| `rpi-01` | `192.168.1.30` | Physical host | Edge node: DNS, VPN, reverse proxy | Ubuntu Server 24.04.4 | Active |
+| `monitor` | `192.168.1.50` | VM | Monitoring | Ubuntu Server 24.04.4 | Active |
+| `synthia` | `192.168.1.51` | VM | AI workload / Ollama | Ubuntu Server 24.04.4 | Active |
+| `dns` | `192.168.1.52` | VM | Secondary DNS (AdGuard Home) | Ubuntu Server 24.04 | Active |
+
+## Other Addresses in Use
+
+These addresses are not infrastructure nodes but are referenced by infrastructure
+configuration and are documented here so the dependency is visible:
+
+| IP Address | Description | Referenced by |
+|---|---|---|
+| `192.168.1.109` | Personal workstation (DHCP range) | Prometheus scrape targets; `rpi-01` reverse proxy backends |
+
+## Secondary Networks
+
+| Range | Purpose | Terminates on |
+|---|---|---|
+| `10.8.0.0/24` | WireGuard VPN tunnel | `rpi-01` (`wg0`, gateway `10.8.0.1`) |
+| `172.17.0.0/16`, `172.18.0.0/16`, `172.30.0.0/16` | Docker bridge networks | `atlas` |
+
+## IPv6
+
+Every node also holds a globally routable IPv6 address in the
+`2001:1388:80d:f3f3::/64` prefix, delegated by the ISP router. IPv6 is currently
+unplanned and undocumented at the addressing level: there is no static
+assignment scheme, and firewall posture for IPv6 has not been reviewed.
+
+This is not theoretical. An audit found internet scanner traffic reaching nginx
+on `rpi-01` over IPv6, on a path that proxied through to the personal
+workstation. Details and remediation are in
+[`docs/network.md`](../docs/network.md#retired-exposure).
+
+Because IPv6 addresses are globally routable rather than NAT-hidden, any service
+bound to `::` is reachable from outside the LAN if the router firewall permits
+it. Services currently bound to `::` that have not been audited against the
+router's IPv6 policy include Samba on `vault` (`[::]:445`, `[::]:139`), SSH on
+every node, and the Proxmox interface on `virt` (`*:8006`).
 
 ## Notes
 
 - All documented homelab infrastructure currently resides on the same LAN.
 - No VLAN segmentation is currently in place.
-- Infrastructure services are exposed internally only.
+- The `.52` node falls inside the documented VM range and follows the convention.
+- The workstation at `.109` sits inside the DHCP pool while infrastructure
+  configuration depends on its address. A static assignment or reservation would
+  make that dependency safer.
 - Future growth is expected to maintain the general range-based addressing convention unless a more structured segmented design is introduced.

@@ -15,23 +15,32 @@ It is currently stable and operational, hosting the AI workload VM and the monit
 ## Operating System
 
 - Platform: Proxmox VE
-- Version: `9.1.0`
+- Version: `9.1.6` (`pve-manager/9.1.6`)
+- Base system: Debian 13 "trixie", kernel `6.17.13-2-pve`
 - Filesystem: `ext4`
 
 ## Hardware
 
-- CPU: Intel Core i7-9700K
+- CPU: Intel Core i7-9700K (8 cores)
 - Memory: 16 GB RAM
-- GPU: NVIDIA GeForce GTX 2060
-- Host Storage: 500 GB WD Blue SSD
+- GPU: NVIDIA GeForce RTX 2060, passed through to the AI workload VM
+- Integrated graphics: Intel UHD Graphics 630, retained by the host
+- Host Storage: 500 GB SSD (`sda`, ~466 GB)
 
 ## Storage Layout
 
 `virt` uses a single local SSD for the Proxmox host and local VM storage.
 
-Current VM disks are stored on:
+| Storage | Type | Size | Usage |
+|---|---|---|---|
+| `local` | dir | ~62 GB | ISOs, backups; about 22 percent used |
+| `local-lvm` | lvmthin | ~369 GB | VM disks; about 13 percent used |
 
-- `local-lvm`
+Host volumes are `pve-root` (64 GB, `/`) and `pve-swap` (8 GB), with the
+remainder allocated to the `pve-data` thin pool.
+
+There is no ZFS pool on this host, despite `zfs-zed` being present in the
+default Proxmox service set.
 
 ## Network Configuration
 
@@ -44,7 +53,9 @@ At present, no advanced multi-interface or segmented network configuration has b
 
 ## Current Virtual Machines
 
-### monitor
+Three VMs are defined and running.
+
+### VMID 101 — monitor
 
 **Role**  
 Infrastructure monitoring VM
@@ -61,10 +72,13 @@ Infrastructure monitoring VM
 
 ---
 
-### synthia
+### VMID 100 — ia / synthia
 
 **Role**  
 AI workload VM
+
+Note the naming mismatch: the VM is named `ia` in Proxmox, while the guest
+hostname is `synthia`. Both names appear across documentation and tooling.
 
 **Resources**
 - CPU: 1 socket, 2 cores
@@ -77,11 +91,33 @@ AI workload VM
 - serve the LLM used by the avatar-related AI project
 
 **GPU Configuration**
-- full GPU passthrough is enabled
+- full GPU passthrough is enabled via `hostpci0: 0000:01:00,pcie=1`
+- the guest currently cannot use the GPU: `nvidia-smi` reports a driver/library
+  version mismatch, so inference falls back to CPU. See
+  [`docs/services/ai-stack.md`](../services/ai-stack.md).
+
+---
+
+### VMID 102 — dns
+
+**Role**  
+Secondary internal DNS
+
+**Resources**
+- CPU: 1 socket, 1 core
+- Memory: 2 GB RAM
+- Disk: 32 GB
+- IP: `192.168.1.52`
+
+**Purpose**
+- run a second AdGuard Home instance as backup for the primary on `rpi-01`
+- published internally as `adguard2.home.arpa` and `osiris.home.arpa`
 
 ## Current State
 
-`virt` is currently stable and runs both existing VMs without issue.
+`virt` is stable and runs all three VMs without issue. Host memory is the
+tightest resource: roughly 10 GB of 16 GB is committed with the current VM set,
+which constrains the planned Minecraft VM.
 
 ## Planned Expansion
 
