@@ -28,9 +28,18 @@ storage. `atlas` hosts the application; `vault` holds the data.
 
 ## Service Stack
 
-- Docker version: `29.1.2`
-- Primary application: Jellyfin
-- Deployment style: Docker-based
+- Docker version: `29.1.2`, Compose v5.1.1
+- Deployment style: Docker-based, one compose stack per service under `/srv`
+
+| Service | Port | Purpose |
+|---|---|---|
+| Jellyfin | `8096` | Media server, NAS-backed library |
+| Vaultwarden | `8222` | Password manager, TLS terminated by the container |
+
+Vaultwarden is documented separately in
+[`docs/services/vaultwarden.md`](../services/vaultwarden.md). It was placed here
+because Docker was already running, the node had spare capacity, and it is
+internal-only.
 
 ## Storage Layout
 
@@ -81,14 +90,33 @@ months. Media storage is centralized on `vault` as intended.
 
 ## Operational Notes
 
-- Jellyfin is the only container currently running, though Docker holds an
-  additional network (`infra_net`) suggesting other stacks have been defined
 - content acquisition and media workflow are still relatively manual
 - the host may be renamed later to better reflect its service role
-- local disk usage sits around 146 GB of 439 GB after the media migration
+- Docker holds an unused `infra_net` network, suggesting a stack defined and
+  never deployed
+- a reboot is pending: the running kernel is `6.8.0-106` while `6.8.0-136` is
+  installed, so several months of kernel patches are staged but inactive
+
+### Leftover local media
+
+`/srv/media` still holds 126 GB from before the NAS migration. Jellyfin no longer
+reads it — the container mounts `/mnt/media_nas` instead — so it is invisible to
+the service while still consuming disk.
+
+It cannot simply be deleted. A file-level comparison against the NAS library
+found **14 files present only on `atlas`**, totalling 29 GB. Those files sit on
+an unmirrored SSD, outside the RAID array, outside every backup, and unreachable
+by Jellyfin.
+
+The safe sequence is to copy those 14 files to `vault`, verify them, and only
+then remove `/srv/media`, which would reclaim 126 GB and drop disk usage from
+36 percent to roughly 5 percent.
 
 ## Planned Changes
 
+- consolidate the 14 orphaned media files onto `vault` and reclaim `/srv/media`
+- reboot to activate the pending kernel
+- replace the Vaultwarden self-signed certificate with a Let's Encrypt one
 - verify hardware transcoding still behaves correctly against NAS-backed media
 - confirm playback behavior when `vault` is unavailable, given the `soft` mount
-- document the compose stack in `configs/`
+- document the compose stacks in `configs/`

@@ -78,6 +78,7 @@ The environment is organized around a few core principles:
 - [`docs/services/jellyfin.md`](docs/services/jellyfin.md) — Jellyfin service documentation
 - [`docs/services/nas.md`](docs/services/nas.md) — NAS service documentation
 - [`docs/services/display.md`](docs/services/display.md) — workstation stats dashboard
+- [`docs/services/vaultwarden.md`](docs/services/vaultwarden.md) — password manager
 - [`docs/services/minecraft.md`](docs/services/minecraft.md) — planned Minecraft service
 - [`docs/runbooks/backups.md`](docs/runbooks/backups.md) — backup planning
 - [`docs/runbooks/restore.md`](docs/runbooks/restore.md) — restore and recovery direction

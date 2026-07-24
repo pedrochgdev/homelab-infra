@@ -6,21 +6,28 @@ This document defines the backup strategy for the homelab. It is written to be
 executed without making further decisions: what is protected, where it goes, how
 often, how long it is kept, and how it is verified.
 
-**Current reality, as of the July 2026 audit: there are no backups.** Not
-incomplete ones — none.
+## Implementation Status
 
-```
-/var/lib/vz/dump/                     empty
-/etc/pve/jobs.cfg                     does not exist (no scheduled backup jobs)
-qm listsnapshot 100/101/102           no snapshots on any VM
-/srv/nas/backups/configs              empty
-/srv/nas/backups/exports              empty
-/srv/nas/backups/pcs                  empty
-/srv/nas/backups/servers/maincore/    two tarballs dated 2026-03-14
-```
+The July 2026 audit found no backups at all: no scheduled Proxmox jobs, no VM
+snapshots, empty directories under `/srv/nas/backups`, and two manual tarballs
+from four months earlier.
 
-The only copies that exist are two manual tarballs from four months ago. The
-directory structure under `/srv/nas/backups` was created but never filled.
+Tier 1 is now partially implemented.
+
+| Component | Status |
+|---|---|
+| `lv_backup` on `vg0`, 400 GB, mounted at `/srv/backup` | Done |
+| restic repository, local | Done |
+| Daily backup of `/srv/nas/users` and `/srv/nas/backups` | Done, 03:30 |
+| Vaultwarden backup from `atlas` into the staging area | Done, 02:00 |
+| Off-site copy to Backblaze B2 | **Not done** |
+| `rpi-01` service configuration | Not done |
+| Tier 2, weekly `vzdump` of the three VMs | Not done |
+| Restore test | **Not done** |
+
+Two of those gaps matter more than the others. Without the off-site copy every
+protected byte still lives in one room, and without a restore test none of it is
+proven to work.
 
 ## RAID Is Not a Backup
 
@@ -49,9 +56,34 @@ how much of it there is.
 
 | Tier | Contents | Size | Destination | Frequency | Retention |
 |---|---|---|---|---|---|
-| 1 — Irreplaceable | `/srv/nas/users`, plus service configuration on `rpi-01` | ~39 GB | Backblaze B2 **and** local LV on `vault` | Daily | 7 daily, 4 weekly, 6 monthly |
+| 1 — Irreplaceable | `/srv/nas/users`, `/srv/nas/backups`, plus service configuration on `rpi-01` | ~48 GB | Backblaze B2 **and** local LV on `vault` | Daily | 7 daily, 4 weekly, 6 monthly |
 | 2 — Rebuildable at cost | The three VMs on `virt` | ~40 GB compressed | Local LV on `vault` | Weekly | 4 |
 | 3 — Recreatable | `/srv/nas/content/media` | 769 GB | None, by explicit decision | — | — |
+
+### The staging pattern
+
+Nodes other than `vault` cannot write into the restic repository, by design:
+`/srv/backup` is `root:root` mode `700` and is not shared over the network at
+all. If a compromised host or ransomware reached the Samba shares, the encrypted
+repository would still be out of reach.
+
+Instead, other nodes drop their dumps into `/srv/nas/backups/<host>/`, which is
+on the RAID array and reachable, and the daily restic run on `vault` sweeps that
+directory into the protected repository. The staging area is expendable; the
+repository is not.
+
+This is what the previously empty `configs`, `exports`, `pcs` and `servers`
+directories were for.
+
+Current producers:
+
+| Host | Content | Time |
+|---|---|---|
+| `atlas` | Vaultwarden database and RSA signing key | 02:00 |
+| `vault` | Sweeps the staging area into restic | 03:30 |
+
+The 90 minute gap is deliberate: the day's dumps are in place before restic
+collects them, so they land in that same night's snapshot.
 
 ### Tier 1 detail
 
@@ -183,20 +215,41 @@ This is blocked on deploying Alertmanager, which is tracked in
 Until then, backup success must be checked by hand, and that expectation should
 be treated as a known weakness rather than a working process.
 
-## Implementation Order
+## Operational Reference
 
-1. Create `lv_backup` on `vault` and mount it at `/srv/backup`
-2. Configure `restic` for tier 1 against B2, plus a local repository on `/srv/backup`
-3. Run the first full backup and verify it with `restic check`
-4. Schedule the daily run with a systemd timer
-5. Configure a weekly `vzdump` job on `virt` writing to `vault`
-6. Perform the first restore test and record the date above
-7. Add the staleness alert once Alertmanager exists
+On `vault`:
 
-Steps 1 through 3 close the largest gap. The rest is refinement.
+| Path | Purpose |
+|---|---|
+| `/srv/backup/restic` | The repository |
+| `/root/.config/restic/password` | Repository key, mode 600 |
+| `/usr/local/bin/homelab-backup.sh` | Daily job: backup, then `forget --prune` |
+| `homelab-backup.timer` | 03:30, `Persistent=true` |
+
+On `atlas`:
+
+| Path | Purpose |
+|---|---|
+| `/usr/local/bin/vaultwarden-backup.sh` | `sqlite3 .backup`, tar, push to staging |
+| `vaultwarden-backup.timer` | 02:00 |
+| `/root/.ssh/id_ed25519` | Push key, authorized on `vault` with forwarding and pty disabled |
+
+**The repository key is the single point of failure for the whole scheme.** It
+lives on `vault`, which is the machine being protected. A copy must exist outside
+the homelab — in a password manager or on paper — or an off-site restore is
+impossible by construction.
+
+## Remaining Work
+
+1. Configure the B2 repository and run the first off-site backup
+2. Back up `rpi-01` service configuration through the staging area
+3. Schedule the weekly `vzdump` job on `virt`
+4. Perform the first restore test and record the date above
+5. Add the staleness alert once Alertmanager exists
 
 ## Notes
 
-This document describes the intended implementation. None of it is in place yet.
-It stops being a plan and becomes a runbook at step 6, when the first restore is
-proven to work.
+Tier 1 protects against accidental deletion today, and nothing more. Fire, theft
+and ransomware are still unmitigated until step 1 is done, and nothing here is
+proven until step 4.
+
