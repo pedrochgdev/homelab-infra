@@ -2,9 +2,13 @@
 
 ## Summary
 
-This document defines the restoration philosophy for the homelab and outlines how recovery should be approached once backup workflows are in place.
+This document defines how recovery is approached in the homelab, organized around
+the tiers defined in [`docs/runbooks/backups.md`](backups.md).
 
-At present, restore capability is not yet operationally mature because a full backup policy has not been finalized. This document exists to establish expectations and the future structure of recovery procedures.
+**Restore capability is currently zero.** Not limited — absent. No backups exist,
+so none of the procedures below can be executed today. They describe what
+recovery will look like once the backup implementation is in place, and they are
+written now so that the procedures exist before the incident does.
 
 ## Recovery Principles
 
@@ -90,25 +94,77 @@ When multiple systems are affected, recovery should prioritize:
 4. core application services
 5. lower-priority media or experimental workloads
 
-## Restore Requirements
+## Restore Procedures by Tier
 
-A complete restore capability should eventually include:
+These become executable once the corresponding backup tier exists.
 
-- known backup source
-- clear mapping of what data is protected
-- location of relevant configuration backups
-- restore commands or procedures
-- post-restore validation steps
+### Tier 1 — personal data and edge configuration
+
+Restores come from the `restic` repository. Prefer the local repository on
+`/srv/backup` for speed, and fall back to Backblaze B2 when the local copy is
+gone or suspect.
+
+```sh
+# What snapshots exist
+restic -r /srv/backup/restic snapshots
+
+# Recover a single path from the most recent snapshot
+restic -r /srv/backup/restic restore latest \
+  --target /tmp/restore --include /srv/nas/users/drocho/<path>
+
+# Same operation against the off-site copy
+restic -r b2:<bucket>:/ restore latest --target /tmp/restore --include <path>
+```
+
+Restore to `/tmp/restore` first and copy into place after inspection. Restoring
+directly over live data turns a recoverable mistake into a second incident.
+
+For `rpi-01` configuration, restore the relevant directory, compare against what
+is running, and reload the service rather than replacing files blindly. WireGuard
+and Cloudflare credentials are inside these paths, so restored files must keep
+restrictive ownership and permissions.
+
+### Tier 2 — virtual machines
+
+```sh
+# Available dumps
+ls /srv/backup/dump/
+
+# Restore to a scratch VMID to verify before touching the original
+qmrestore /srv/backup/dump/vzdump-qemu-101-<timestamp>.vma.zst 999
+
+# Restore in place, overwriting the existing VM
+qmrestore /srv/backup/dump/vzdump-qemu-101-<timestamp>.vma.zst 101 --force
+```
+
+Always restore to a scratch VMID first when the original still exists. `--force`
+destroys the current disk.
+
+### Tier 3 — media
+
+There is no restore path. Media is re-acquired. Use the manifest described in
+the backups runbook to determine what was present.
+
+## Recovery Time Expectations
+
+Rough targets, to be validated by the first restore test:
+
+| Scenario | Expected effort |
+|---|---|
+| Single file from local repository | Minutes |
+| Single file from B2 | Minutes, bounded by download speed |
+| Full tier 1 restore from B2 | Hours, dominated by 39 GB download |
+| One VM from local dump | Under an hour |
+| `vault` host rebuild plus array reassembly | A day, largely manual |
 
 ## Current Limitations
 
 The homelab does not yet have:
 
-- a finalized backup strategy
+- any backups at all, so no restore is currently possible
 - restore-tested backup sets
-- documented service rebuild procedures
-- formal recovery time expectations
-- retention policy aligned with restore objectives
+- documented service rebuild procedures for `atlas` and `virt`
+- alerting that would reveal a backup job that stopped running
 
 ## Minimum Future Restore Scope
 
@@ -137,12 +193,16 @@ Any restore procedure should validate:
 
 The next practical recovery improvements should be:
 
-1. define what data is actually backed up
-2. create a restore checklist for `vault`
+1. implement the backup tiers, following
+   [`docs/runbooks/backups.md`](backups.md#implementation-order)
+2. perform one small restore test and record the date in the backups runbook
 3. create a rebuild checklist for `atlas`
 4. create a rebuild checklist for `virt`
-5. perform at least one small restore test and document the outcome
+5. measure the actual recovery times and replace the estimates above
 
 ## Notes
 
-This document is intentionally procedural in tone but still incomplete in implementation detail. It should become more specific once real backup workflows and validation routines are in place.
+The procedures here are written against a backup implementation that does not
+exist yet. They are deliberately specific anyway: writing them now surfaces what
+the backup design has to support, and an incident is the worst moment to be
+designing a recovery process from scratch.

@@ -2,15 +2,29 @@
 
 ## Summary
 
-This document defines the backup direction for the homelab, with an emphasis on practical protection rather than unnecessary complexity.
+This document defines the backup strategy for the homelab. It is written to be
+executed without making further decisions: what is protected, where it goes, how
+often, how long it is kept, and how it is verified.
 
-At present, the homelab has storage redundancy on `vault` through RAID 1, but it does not yet have a complete backup strategy. This document establishes the intended backup model and the immediate next steps required to make data protection meaningful.
+**Current reality, as of the July 2026 audit: there are no backups.** Not
+incomplete ones — none.
 
-## Important Distinction
+```
+/var/lib/vz/dump/                     empty
+/etc/pve/jobs.cfg                     does not exist (no scheduled backup jobs)
+qm listsnapshot 100/101/102           no snapshots on any VM
+/srv/nas/backups/configs              empty
+/srv/nas/backups/exports              empty
+/srv/nas/backups/pcs                  empty
+/srv/nas/backups/servers/maincore/    two tarballs dated 2026-03-14
+```
 
-RAID is not a backup.
+The only copies that exist are two manual tarballs from four months ago. The
+directory structure under `/srv/nas/backups` was created but never filled.
 
-Current RAID 1 on `vault` protects against:
+## RAID Is Not a Backup
+
+RAID 1 on `vault` protects against:
 
 - failure of a single data disk
 
@@ -18,177 +32,171 @@ It does not protect against:
 
 - accidental deletion
 - file corruption
-- ransomware
+- ransomware reaching the SMB shares
 - permission mistakes
 - operating system failure
 - array misconfiguration
 - host-level failure
-- theft or physical damage
+- theft, fire, or physical damage
 
-Any real backup strategy must assume that the live NAS can still fail in ways RAID does not solve.
+Both mirror members live in the same chassis, in the same room, on the same
+power supply. Any strategy must assume the live array can be lost as a unit.
 
-## Backup Objectives
+## Tiers
 
-The backup strategy should aim to provide:
+Data is protected according to how hard it would be to recreate, not according to
+how much of it there is.
 
-- protection for data that cannot be easily recreated
-- separation between live storage and protected copies
-- clear distinction between critical and non-critical data
-- recoverability that is simple enough to execute under stress
+| Tier | Contents | Size | Destination | Frequency | Retention |
+|---|---|---|---|---|---|
+| 1 — Irreplaceable | `/srv/nas/users`, plus service configuration on `rpi-01` | ~39 GB | Backblaze B2 **and** local LV on `vault` | Daily | 7 daily, 4 weekly, 6 monthly |
+| 2 — Rebuildable at cost | The three VMs on `virt` | ~40 GB compressed | Local LV on `vault` | Weekly | 4 |
+| 3 — Recreatable | `/srv/nas/content/media` | 769 GB | None, by explicit decision | — | — |
 
-## Data Classes
+### Tier 1 detail
 
-The homelab should treat data differently depending on its value and how easily it can be recreated.
+Two distinct things, both irreplaceable for different reasons:
 
-### Class 1: Critical Personal Data
+**Personal data.** `/srv/nas/users`, currently about 39 GB. This is the only
+copy that exists anywhere.
 
-Examples:
-- personal files
-- important documents
-- irreplaceable user data
-- selected configuration files
-- credentials exports stored outside the repository, if any
+**Service configuration on `rpi-01`.** The edge node's configuration exists
+solely on its NVMe drive, and reconstructing it by hand would be slow and
+error-prone:
 
-Protection target:
-- highest protection priority
-- must exist in more than one location
-- should be backed up independently from live NAS storage
+- `/etc/nginx/` — reverse proxy definitions for every internal hostname
+- `/etc/wireguard/` — VPN server configuration and peer keys
+- `/etc/cloudflared/` — tunnel configuration and credentials
+- AdGuard Home working directory — filter lists, rewrites, and query settings
 
-### Class 2: Infrastructure Data
+Note that `/etc/wireguard/` and `/etc/cloudflared/` contain secrets. This is
+precisely why the remote repository must be encrypted client-side.
 
-Examples:
-- service configuration
-- Proxmox VM definitions
-- exported compose files
-- monitoring configuration
-- scripts and operational notes not already in Git
+Also worth including: `/var/www/display/index.html` on `monitor`, which is
+authored work existing in exactly one place. See
+[`docs/services/display.md`](../services/display.md).
 
-Protection target:
-- important
-- should be backed up regularly
-- should be recoverable without rebuilding everything manually
+### Tier 3 decision
 
-### Class 3: Shared and Family Data
+Media is deliberately not backed up. 769 GB of remote storage is not justified
+for content that can be re-acquired, and the cost would dominate the entire
+backup budget.
 
-Examples:
-- files stored under shared directories
-- family share content
+The decision is recorded here rather than left implicit, so it is a choice rather
+than an oversight.
 
-Protection target:
-- medium to high priority depending on actual content
-- protection level should be decided based on whether data is replaceable
+One cheap mitigation is worth doing anyway: generate a periodic manifest so the
+library contents are known even if the files are gone.
 
-### Class 4: Media Library
+```sh
+find /srv/nas/content/media -type f -printf '%p\t%s\n' > /srv/backup/media-manifest.txt
+```
 
-Examples:
-- movies
-- anime
-- music
-- series
-- other entertainment media
+The manifest is a few megabytes and belongs in tier 1. Knowing what was lost is
+most of the work of rebuilding it.
 
-Protection target:
-- lower than personal documents if content can be recreated
-- still valuable due to time investment and organization effort
-- may justify partial backup depending on capacity and cost
+## Tooling
 
-## Current State
+### Tier 1: restic
 
-Current storage reality:
+`restic` is the right tool here for three specific reasons:
 
-- `vault` stores live NAS data
-- RAID 1 is active on the data array
-- no formal backup process is currently in place
-- no retention policy is currently defined
-- no restore testing has been documented yet
+- **Client-side encryption.** The provider stores ciphertext and never holds the
+  key. This matters because tier 1 includes WireGuard and Cloudflare credentials.
+- **Deduplication and real incrementals.** Only changed blocks are uploaded, so
+  daily runs stay cheap after the first.
+- **Declarative retention.** `restic forget --prune` enforces the retention
+  policy directly, instead of requiring hand-written rotation scripts.
 
-## Recommended Backup Model
+### Tier 2: vzdump
 
-The backup strategy should be phased rather than attempting to solve everything at once.
+Proxmox's native `vzdump` is already installed and is sufficient for three VMs
+that are not classified as irreplaceable. Weekly full dumps with four kept
+copies is proportionate.
 
-### Phase 1: Configuration and Critical Data
+Proxmox Backup Server is the natural evolution if VM backups later need
+deduplication and incrementals, and `vault` has the capacity to host it. It is
+not warranted yet.
 
-Protect first:
-- important personal files
-- NAS configuration
-- Samba configuration
-- `mdadm` configuration
-- service compose files
-- scripts
-- selected application config directories
-- any infrastructure data not already safely versioned in Git
+## Destinations
 
-### Phase 2: Shared Data
+### Off-site: Backblaze B2
 
-Protect next:
-- selected shared content
-- family share content
-- data that would be painful to rebuild manually
+This is the only destination that survives fire, theft, or ransomware, and it is
+the one that matters most. Roughly 39 GB at B2 pricing costs on the order of
+0.25 USD per month.
 
-### Phase 3: Media Strategy
+Without this tier, everything else is still in the same room.
 
-Decide explicitly:
-- what media is worth backing up
-- what media can be re-acquired
-- what media should be protected because of effort, metadata, or rarity
+### Local: new logical volume on `vault`
 
-## Backup Targets
+`vault` has approximately **780 GB of unallocated space** in `vg0`. The `sda4`
+partition is 928.5 GiB and only 148 are assigned:
 
-The future backup strategy should use backup targets separate from the live array.
+| Volume | Size | Mount |
+|---|---|---|
+| `vg0-lv_root` | 100 GB | `/` |
+| `vg0-lv_var` | 40 GB | `/var` |
+| `vg0-lv_swap` | 8 GB | swap |
 
-Preferred characteristics of backup targets:
+Creating an `lv_backup` volume there costs nothing and gives fast local restores
+without pulling from the internet.
 
-- independent from the live NAS data array
-- not permanently exposed as writable primary storage
-- simple enough to verify and restore from
-- capacity aligned with the protection goals of each data class
+Mount it at `/srv/backup`, deliberately outside `/srv/nas`, so that it is never
+reachable through a Samba share. A backup target writable by the same credentials
+that ransomware would use is not a backup target.
 
-Potential backup target options may include:
-
-- additional external disk storage
-- another internal disk used for backup only
-- remote backup target
-- secondary NAS target
-- selected off-site copy for critical files
-
-## Backup Frequency Guidance
-
-Initial guidance by data type:
-
-### Critical Personal Data
-- frequent backups
-- versioned if possible
-
-### Infrastructure Data
-- regular scheduled backup
-- especially after meaningful changes
-
-### Shared Data
-- scheduled backup depending on usage frequency
-
-### Media
-- optional, selective, or lower-frequency backup depending on value and available capacity
+**This local copy is not an independent copy.** It sits on the same physical
+disk as the operating system, on the same host, in the same room. It protects
+against accidental deletion and nothing else. Loss of `sda` takes the OS and this
+copy together.
 
 ## Verification
 
-A backup that has never been checked should not be assumed valid.
+A backup that has never been restored is an assumption, not a backup.
 
-Future process should include:
+| Check | Frequency |
+|---|---|
+| `restic check` against the remote repository | Monthly |
+| Restore a known file from tier 1 and compare it | Quarterly |
+| Restore one VM to a scratch VMID and boot it | Quarterly |
 
-- verification that backup jobs actually completed
-- spot-checking restored files
-- periodic restore testing for critical paths
+Record the date of the last successful restore test here, so that a stale test is
+visible rather than forgotten:
 
-## Immediate Next Steps
+- Last tier 1 restore test: *never*
+- Last tier 2 restore test: *never*
 
-The next practical backup actions should be:
+## Monitoring Gap
 
-1. define which directories on `vault` are critical
-2. classify data by importance
-3. choose at least one independent backup target
-4. begin backing up critical personal and infrastructure data first
-5. document restore steps after the first backup workflow is in place
+Backup failure detection currently has nowhere to go. Prometheus scrapes metrics
+but there is no `alertmanager` installed and no `rule_files` configured, so a
+backup job that silently stops running would not surface until it was needed.
+
+The intended rule, once the alerting layer exists:
+
+> alert when the most recent successful backup is older than 48 hours
+
+This is blocked on deploying Alertmanager, which is tracked in
+[`docs/roadmap.md`](../roadmap.md).
+
+Until then, backup success must be checked by hand, and that expectation should
+be treated as a known weakness rather than a working process.
+
+## Implementation Order
+
+1. Create `lv_backup` on `vault` and mount it at `/srv/backup`
+2. Configure `restic` for tier 1 against B2, plus a local repository on `/srv/backup`
+3. Run the first full backup and verify it with `restic check`
+4. Schedule the daily run with a systemd timer
+5. Configure a weekly `vzdump` job on `virt` writing to `vault`
+6. Perform the first restore test and record the date above
+7. Add the staleness alert once Alertmanager exists
+
+Steps 1 through 3 close the largest gap. The rest is refinement.
 
 ## Notes
 
-This document defines the intended backup direction. It should be updated once the actual backup implementation, retention policy, and validation workflow are in place.
+This document describes the intended implementation. None of it is in place yet.
+It stops being a plan and becomes a runbook at step 6, when the first restore is
+proven to work.

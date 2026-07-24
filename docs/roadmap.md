@@ -10,14 +10,15 @@ The roadmap reflects both practical needs and learning goals.
 
 The highest-priority items at this stage are:
 
-1. close the inbound IPv6 firewall rule that exposes `rpi-01` on ports 80 and 443
-2. audit every service bound to `::` against the router's IPv6 policy, starting with Samba on `vault` and the Proxmox interface on `virt`
-3. restore GPU acceleration on `synthia`, which currently falls back to CPU inference
-4. define data protection, backup, and recovery strategy for the NAS
-5. reduce the concentration of edge roles on `rpi-01`, which now carries DNS, VPN, reverse proxy, and public ingress
-6. continue refining infrastructure documentation
-7. improve cable management in the rack
-8. continue using the environment as a platform for AI, automation, infrastructure, and security learning
+1. implement the backup strategy, since there are currently no backups of any kind
+2. close the inbound IPv6 firewall rule that exposes `rpi-01` on ports 80 and 443
+3. deploy Alertmanager, so that collected metrics can actually raise a failure
+4. audit every service bound to `::` against the router's IPv6 policy, starting with Samba on `vault` and the Proxmox interface on `virt`
+5. restore GPU acceleration on `synthia`, which currently falls back to CPU inference
+6. reduce the concentration of edge roles on `rpi-01`, which now carries DNS, VPN, reverse proxy, and public ingress
+7. continue refining infrastructure documentation
+8. improve cable management in the rack
+9. continue using the environment as a platform for AI, automation, infrastructure, and security learning
 
 ### Recently completed
 
@@ -32,10 +33,26 @@ The highest-priority items at this stage are:
 ## Short-Term Goals
 
 ### Storage and Data Protection
-- define backup policy by directory or data class
-- document risk areas for storage
-- define prevention and recovery actions
-- turn existing SMART and RAID metrics into alerts
+
+The strategy is defined in [`docs/runbooks/backups.md`](runbooks/backups.md).
+None of it is implemented yet; there are currently no backups of any kind.
+
+- create `lv_backup` on the ~780 GB of unallocated space in `vg0` on `vault`, mounted at `/srv/backup` outside the Samba shares
+- configure `restic` for tier 1 against Backblaze B2 and a local repository
+- run the first backup and verify it with `restic check`
+- schedule the daily run with a systemd timer
+- schedule a weekly `vzdump` job on `virt` writing to `vault`
+- perform the first restore test and record the date
+
+### Alerting
+
+Prometheus collects metrics that nothing acts on: there is no `alertmanager`
+and no `rule_files`. This blocks failure detection for storage and backups alike.
+
+- deploy Alertmanager alongside Prometheus on `monitor`
+- turn the existing SMART and RAID metrics into alerts
+- alert when the most recent successful backup is older than 48 hours
+- route notifications somewhere that reaches a phone
 
 ### Raspberry Pi
 - document and back up the configuration of the services it now runs

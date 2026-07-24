@@ -147,9 +147,13 @@ A real protection model still needs to define:
 
 ## Planned Improvements
 
+The backup strategy is now defined in
+[`docs/runbooks/backups.md`](../runbooks/backups.md), including which directories
+are treated as irreplaceable and where copies go. None of it is implemented yet.
+
 The following items are current priorities:
 
-- define backup policy by directory or data type
+- implement the backup tiers, starting with `/srv/nas/users`
 - define alerting rules on top of the existing SMART and RAID metrics
 - document recovery procedures
 - improve storage security posture

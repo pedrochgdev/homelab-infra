@@ -45,6 +45,11 @@ cannot fill the root filesystem:
 | `vg0-lv_var` | 40 GB | `/var` |
 | `vg0-lv_swap` | 8 GB | swap |
 
+`sda4` is 928.5 GiB and only 148 are allocated, leaving roughly **780 GB
+unallocated** in `vg0`. This space is earmarked as the local backup destination
+described in [`docs/runbooks/backups.md`](../runbooks/backups.md), mounted at
+`/srv/backup` and deliberately kept outside the Samba shares.
+
 ## RAID Implementation
 
 The current array is built with Linux software RAID using `mdadm`:

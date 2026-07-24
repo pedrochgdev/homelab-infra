@@ -37,9 +37,12 @@ It is already operational and serves as the central monitoring point for the env
 | Grafana | 12.4.1 | `3000` |
 | nginx | — | `80` |
 
-nginx serves a static page from `/var/www/display`, published internally as
-`display.home.arpa` through the reverse proxy on `rpi-01`. This is a display or
-dashboard surface rather than part of the monitoring stack itself.
+nginx serves the `display` dashboard from `/var/www/display`, published
+internally as `display.home.arpa` through the reverse proxy on `rpi-01`. This is
+a custom real-time statistics page for the personal workstation, independent of
+the Prometheus and Grafana stack despite sharing the host. It polls a bespoke
+agent on `192.168.1.109:9500` that nothing currently monitors. See
+[`docs/services/display.md`](../services/display.md).
 
 ## Scrape Targets
 
