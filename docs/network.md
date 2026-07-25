@@ -174,11 +174,54 @@ Still outstanding: the inbound IPv6 firewall rule on the router should be
 removed. Until then the host remains reachable and scannable, even though nginx
 now refuses to serve those requests.
 
+## Host Firewalls
+
+Earlier revisions of this document stated that no filtering existed on the
+nodes. That was wrong: every Ubuntu node runs `ufw`, and `virt` runs the Proxmox
+firewall.
+
+| Node | Firewall | State |
+|---|---|---|
+| `vault` | `ufw` | Active, rules documented below |
+| `atlas` | `ufw` | Active |
+| `rpi-01` | `ufw` | Active |
+| `monitor` | `ufw` | Active |
+| `synthia` | `ufw` | Active |
+| `virt` | Proxmox firewall | Enabled, but see caveat |
+
+### `vault`
+
+```
+22/tcp     ALLOW  192.168.1.0/24
+Samba      ALLOW  192.168.1.0/24
+9100/tcp   ALLOW  192.168.1.50
+9633/tcp   ALLOW  192.168.1.50
+111,2049   ALLOW  192.168.1.20        (NFS, added for VM backups)
+```
+
+These are well scoped. The metrics exporters accept connections only from
+`monitor` rather than from the whole LAN, and the NFS export is reachable only
+from `virt`.
+
+### `virt` and its guests
+
+The Proxmox firewall is enabled at cluster level with `policy_in: DROP`. There
+is no `host.fw`, and more importantly **no VM has `firewall=1` set on its
+network device**, so the drop policy is not applied to any guest.
+
+In practice this means `monitor`, `synthia` and `dns` are unfiltered at the
+hypervisor level and rely entirely on their own `ufw`. The Proxmox firewall
+being "enabled" is misleading if read without that detail.
+
+The rule sets on the nodes other than `vault` have not been recorded here yet.
+
 ## Current Limitations
 
 - no network segmentation
 - no VLAN isolation
 - no dedicated management network
+- the Proxmox firewall is enabled but not applied to any guest, since no VM has `firewall=1` on its network device
+- `ufw` rule sets are documented only for `vault`
 - IPv6 is delegated by the ISP and globally routable, but not planned, documented, or firewalled deliberately; an inbound allowance to `rpi-01` went unnoticed until an audit found scanner traffic in the logs
 - services bound to `::` have not been audited against the router's IPv6 policy; `vault` listens on `[::]:445` for Samba and `virt` exposes the Proxmox interface on `*:8006`
 - public exposure terminates on the same node that serves internal DNS and VPN, so the edge tier has no isolation from the internal tier

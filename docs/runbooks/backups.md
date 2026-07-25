@@ -12,22 +12,33 @@ The July 2026 audit found no backups at all: no scheduled Proxmox jobs, no VM
 snapshots, empty directories under `/srv/nas/backups`, and two manual tarballs
 from four months earlier.
 
-Tier 1 is now partially implemented.
+All three tiers are now implemented.
 
 | Component | Status |
 |---|---|
 | `lv_backup` on `vg0`, 400 GB, mounted at `/srv/backup` | Done |
 | restic repository, local | Done |
-| Daily backup of `/srv/nas/users` and `/srv/nas/backups` | Done, 03:30 |
+| restic repository, Backblaze B2 (`homelab-vault-arpa`) | Done |
+| Daily backup of `/srv/nas/users` and `/srv/nas/backups` to both | Done, 03:30 |
 | Vaultwarden backup from `atlas` into the staging area | Done, 02:00 |
-| Off-site copy to Backblaze B2 | **Not done** |
-| `rpi-01` service configuration | Not done |
-| Tier 2, weekly `vzdump` of the three VMs | Not done |
+| `rpi-01` service configuration into the staging area | Done, 02:20 |
+| Tier 2, weekly `vzdump` of the three VMs over NFS | Done, Saturdays 01:00 |
 | Restore test | **Not done** |
 
-Two of those gaps matter more than the others. Without the off-site copy every
-protected byte still lives in one room, and without a restore test none of it is
-proven to work.
+The remaining gap is the one that matters most. Every mechanism above is
+unproven until a restore has actually been performed.
+
+### Schedule
+
+```
+01:00 Sat  virt    vzdump of all three VMs  → NFS to vault-dump
+02:00      atlas   Vaultwarden dump         → staging
+02:20      rpi-01  edge configuration       → staging
+03:30      vault   restic: local + B2       ← sweeps staging
+```
+
+The ordering is deliberate: producers write to the staging area before the
+nightly restic run collects it, so a day's dumps land in that same snapshot.
 
 ## RAID Is Not a Backup
 
@@ -80,10 +91,17 @@ Current producers:
 | Host | Content | Time |
 |---|---|---|
 | `atlas` | Vaultwarden database and RSA signing key | 02:00 |
-| `vault` | Sweeps the staging area into restic | 03:30 |
+| `rpi-01` | nginx, WireGuard, cloudflared, AdGuard, plus a service inventory | 02:20 |
+| `vault` | Sweeps the staging area into both repositories | 03:30 |
 
-The 90 minute gap is deliberate: the day's dumps are in place before restic
-collects them, so they land in that same night's snapshot.
+Each producer pushes over SSH with a dedicated key authorized on `vault` with
+port forwarding, agent forwarding, X11 forwarding and pty allocation disabled,
+so those keys can move files and nothing else.
+
+The `rpi-01` tarball contains WireGuard private keys and Cloudflare tunnel
+credentials. It is written mode 600 and lands in a repository that is encrypted
+client-side, which is why the off-site copy could be entrusted to a third party
+at all.
 
 ### Tier 1 detail
 
@@ -142,9 +160,17 @@ most of the work of rebuilding it.
 
 ### Tier 2: vzdump
 
-Proxmox's native `vzdump` is already installed and is sufficient for three VMs
-that are not classified as irreplaceable. Weekly full dumps with four kept
-copies is proportionate.
+Proxmox's native `vzdump` is sufficient for three VMs that are not classified as
+irreplaceable. Weekly snapshot-mode dumps with `zstd` compression, retaining
+four.
+
+`vault` exports `/srv/backup/dump` over NFS to `virt` and only to `virt`, added
+in Proxmox as the `vault-dump` storage. **Only that subdirectory is exported**:
+`/srv/backup/restic` stays outside the export, so a compromise of `virt` could
+write dumps but could not reach the encrypted repositories.
+
+NFSv4.2 is used, which needs only port 2049. Port 111 is also permitted from
+`virt` so that Proxmox's storage probe works.
 
 Proxmox Backup Server is the natural evolution if VM backups later need
 deduplication and incrementals, and `vault` has the capacity to host it. It is
@@ -154,11 +180,22 @@ not warranted yet.
 
 ### Off-site: Backblaze B2
 
-This is the only destination that survives fire, theft, or ransomware, and it is
-the one that matters most. Roughly 39 GB at B2 pricing costs on the order of
-0.25 USD per month.
+Bucket `homelab-vault-arpa`, private, with an application key scoped to that
+bucket alone. Credentials live in `/root/.config/restic/b2.env` on `vault`,
+mode 600.
 
-Without this tier, everything else is still in the same room.
+This is the only destination that survives fire, theft, or ransomware. Roughly
+48 GB at B2 pricing costs on the order of 0.30 USD per month.
+
+Both repositories use the same key, so there is one secret to protect rather
+than two. Lifecycle rules on the bucket are left at *keep all versions*:
+retention is enforced by `restic forget`, and a second policy on the provider
+side would fight with it.
+
+Note that the restic invocation needs `HOME` defined to use its local cache.
+systemd units start without it, so `homelab-backup.service` sets
+`Environment=HOME=/root` explicitly. Without that, every run re-downloads index
+metadata from B2.
 
 ### Local: new logical volume on `vault`
 
