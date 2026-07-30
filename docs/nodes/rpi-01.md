@@ -18,6 +18,7 @@ on it.
 - WireGuard VPN endpoint
 - internal reverse proxy (nginx)
 - Cloudflare tunnel host
+- remote boot control for the workstation (Wake-on-LAN + PXE boot menu)
 - secondary role: experimentation and future cluster work
 
 ## Operating System
@@ -41,6 +42,11 @@ on it.
 | `wg-quick@wg0` | WireGuard VPN endpoint | `wg0`, `10.8.0.1/24` |
 | `cloudflared` | Cloudflare tunnel to publish one vhost | outbound only |
 | `node_exporter` | Metrics for Prometheus | `9100` |
+| dnsmasq | proxyDHCP + TFTP for the workstation's remote boot menu (no DNS, `port=0`) | `67`, `69`, `4011`, `10000-10100/udp` |
+
+The remote boot stack (dnsmasq config, TFTP tree, and the `wake-pc` /
+`set-boot` / `boot-pc` scripts in `/usr/local/bin`) is documented in
+[`docs/services/remote-boot.md`](../services/remote-boot.md).
 
 ## Networking
 
