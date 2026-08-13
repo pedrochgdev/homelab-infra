@@ -248,6 +248,53 @@ only node with a service listening *and* permitted by its own firewall. The same
 packets very likely reached every other node too, and were dropped by `ufw`
 without anyone noticing.
 
+### Confirmed closed
+
+The `80` and `443` entries were removed from the router on 2026-08-13, leaving the
+`51820/udp` rule that carries WireGuard. That rule turned out to be an **IPv6**
+firewall entry, not an IPv4 port forward — no IPv4 forwarding rules were ever
+created, which fits the connection being behind carrier-grade NAT and explains
+the complete absence of IPv4 scanner traffic.
+
+This is worth stating plainly because the obvious inference was wrong: the
+assumption that WireGuard must depend on an IPv4 forward would, if acted on, have
+closed the IPv6 side and taken remote access to the whole homelab with it.
+
+Verification needed the right instrument. The nginx log cannot answer the
+question any more, because `ufw` now drops these packets before nginx sees them —
+the log would look identical whether the router was fixed or not. The kernel's
+`UFW BLOCK` records can, because they show what still arrives:
+
+```
+blocks in 6 hours, by source and destination port
+    5  192.168.1.123  TCP 853
+    5  192.168.1.104  TCP 853
+    5  10.8.0.3       TCP 853
+
+blocks from a global IPv6 source, 24 hours:  0
+```
+
+Every packet the firewall had to drop originated inside the LAN or the VPN. None
+came from the internet, where previously they arrived around a dozen times a day.
+Nothing is reaching the host at all, which is what closing the router rule was
+supposed to achieve.
+
+### Devices asking for encrypted DNS
+
+The same measurement turned up something unrelated: three devices repeatedly
+attempt DNS-over-TLS on port `853` against AdGuard, and are refused because DoT
+is not configured. This is Android's "Private DNS" in automatic mode.
+
+Nothing breaks — the clients fall back to plain DNS on `53` — but they retry
+indefinitely and DNS travels the LAN in the clear. Now that an internal CA issues
+for `*.home.arpa`, serving DoT costs little: AdGuard can present the existing
+certificate on `853`.
+
+One trap to avoid if this is done: setting Android's Private DNS to a *hostname*
+under `.home.arpa` breaks DNS entirely whenever the device is away from home
+without the VPN, because the name does not resolve out there. Leaving it on
+automatic gets encrypted DNS at home and a working phone everywhere else.
+
 The general lesson is worth keeping: **host-based routing is not access control.
 A reverse proxy is a set of doors into the network, and what decides who may
 knock is the firewall.**
