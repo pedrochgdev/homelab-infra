@@ -12,21 +12,76 @@ The July 2026 audit found no backups at all: no scheduled Proxmox jobs, no VM
 snapshots, empty directories under `/srv/nas/backups`, and two manual tarballs
 from four months earlier.
 
-All three tiers are now implemented.
+All three tiers are built. One of them has never worked.
 
 | Component | Status |
 |---|---|
-| `lv_backup` on `vg0`, 400 GB, mounted at `/srv/backup` | Done |
-| restic repository, local | Done |
-| restic repository, Backblaze B2 (`homelab-vault-arpa`) | Done |
-| Daily backup of `/srv/nas/users` and `/srv/nas/backups` to both | Done, 03:30 |
-| Vaultwarden backup from `atlas` into the staging area | Done, 02:00 |
-| `rpi-01` service configuration into the staging area | Done, 02:20 |
-| Tier 2, weekly `vzdump` of the three VMs over NFS | Done, Saturdays 01:00 |
-| Restore test | **Not done** |
+| `lv_backup` on `vg0`, 400 GB, mounted at `/srv/backup` | Working |
+| restic repository, local | Working |
+| restic repository, Backblaze B2 (`homelab-vault-arpa`) | **Failing since day one** |
+| Daily backup of `/srv/nas/users` and `/srv/nas/backups`, local leg | Working, 03:30 |
+| Daily backup, B2 leg | **Failing every night** |
+| Vaultwarden backup from `atlas` into the staging area | Working, 02:00 |
+| `rpi-01` service configuration into the staging area | Working, 02:20 |
+| Tier 2, weekly `vzdump` of the three VMs over NFS | Working, Saturdays 01:00 |
+| Tier 1 restore test, local repository | Passed 2026-08-13 |
+| Tier 1 restore test, off-site repository | Blocked on B2 |
+| Tier 2 restore test | Not done |
 
-The remaining gap is the one that matters most. Every mechanism above is
-unproven until a restore has actually been performed.
+## Incident record
+
+Two failures found on 2026-08-13, both invisible until someone looked. They are
+recorded here rather than quietly fixed, because between them they are the
+strongest argument this document can make for the alerting layer it still lacks.
+
+### The off-site copy never existed
+
+Every B2 upload since the repository was created has been rejected:
+
+```
+403: Cannot upload files, storage cap exceeded.
+```
+
+The Backblaze account's storage cap sits below what the repository needs — the
+free allowance is 10 GB and tier 1 is roughly 48 GB. The daily job logged `FALLO
+backup en b2` every single night and the service exited non-zero every single
+night, and nothing was watching.
+
+The local leg succeeded throughout, which is why the failure was easy to miss:
+snapshots kept appearing on schedule and looked like a working system. **The
+tier that protects against fire, theft and ransomware has never held a byte.**
+
+### `vault` was dead for six days
+
+The journal stops mid-routine at 13:10 on 2026-08-05 and resumes at 02:59 on
+2026-08-11. No kernel panic, no disk error, no thermal event, no clean shutdown
+record — the machine simply stopped. No other node was affected, so it was not a
+household power cut.
+
+SMART cleared the disks: zero reallocated sectors, zero pending, zero CRC errors,
+all three `PASSED`, and the RAID resynced clean. The board's BIOS dates from
+November 2012 and the RAM is non-ECC. An abrupt halt leaving no trace, with
+healthy disks and no machine-check events, points at power — an aged supply or a
+mains interruption.
+
+Consequences, none of them detected at the time:
+
+- no tier 1 backup ran between 2026-08-05 and 2026-08-11
+- the weekly `vzdump` of 2026-08-08 failed with `storage 'vault-dump' is not
+  online`, because the NFS export lives on the machine that was down
+- the machine did not come back by itself; it stayed off until someone noticed
+
+Two cheap mitigations, in order of value:
+
+1. **A UPS.** It prevents the outage and, more importantly, allows a clean
+   shutdown instead of another abrupt one. On the machine holding every backup it
+   is the best-value purchase in the homelab.
+2. **BIOS "After Power Failure" set to Power On.** That alone would have turned
+   six days of outage into two minutes.
+
+Note the shape of the dependency this exposed: `vault` holds the backups *and*
+hosts the NFS export that tier 2 writes into. When it goes, both tiers stop
+together.
 
 ### Schedule
 
@@ -68,7 +123,7 @@ how much of it there is.
 | Tier | Contents | Size | Destination | Frequency | Retention |
 |---|---|---|---|---|---|
 | 1 — Irreplaceable | `/srv/nas/users`, `/srv/nas/backups`, plus service configuration on `rpi-01` | ~48 GB | Backblaze B2 **and** local LV on `vault` | Daily | 7 daily, 4 weekly, 6 monthly |
-| 2 — Rebuildable at cost | The three VMs on `virt` | ~40 GB compressed | Local LV on `vault` | Weekly | 4 |
+| 2 — Rebuildable at cost | The three VMs on `virt` | ~33 GB per run, ~109 GB retained | Local LV on `vault` | Weekly | 4 |
 | 3 — Recreatable | `/srv/nas/content/media` | 769 GB | None, by explicit decision | — | — |
 
 ### The staging pattern
@@ -91,7 +146,7 @@ Current producers:
 | Host | Content | Time |
 |---|---|---|
 | `atlas` | Vaultwarden database and RSA signing key | 02:00 |
-| `rpi-01` | nginx, WireGuard, cloudflared, AdGuard, plus a service inventory | 02:20 |
+| `rpi-01` | nginx, WireGuard, cloudflared, AdGuard, the internal CA, plus a service inventory | 02:20 |
 | `vault` | Sweeps the staging area into both repositories | 03:30 |
 
 Each producer pushes over SSH with a dedicated key authorized on `vault` with
@@ -117,10 +172,17 @@ error-prone:
 - `/etc/nginx/` — reverse proxy definitions for every internal hostname
 - `/etc/wireguard/` — VPN server configuration and peer keys
 - `/etc/cloudflared/` — tunnel configuration and credentials
+- `/etc/homelab-ca/` — the internal certificate authority
 - AdGuard Home working directory — filter lists, rewrites, and query settings
 
-Note that `/etc/wireguard/` and `/etc/cloudflared/` contain secrets. This is
-precisely why the remote repository must be encrypted client-side.
+The CA belongs here for a reason that differs from the rest. Losing it destroys
+no data, but it forces creating a new authority and reinstalling the root
+certificate by hand on every phone, laptop and workstation that trusts it. It is
+irreplaceable in effort rather than in content.
+
+Note that `/etc/wireguard/`, `/etc/cloudflared/` and `/etc/homelab-ca/` all
+contain private keys. This is precisely why the remote repository must be
+encrypted client-side.
 
 Also worth including: `/var/www/display/index.html` on `monitor`, which is
 authored work existing in exactly one place. See
@@ -187,6 +249,12 @@ mode 600.
 This is the only destination that survives fire, theft, or ransomware. Roughly
 48 GB at B2 pricing costs on the order of 0.30 USD per month.
 
+**The account cap must be raised before any of this is true.** Backblaze's free
+allowance is 10 GB, and the account is configured below what tier 1 needs, so
+every upload has been rejected with `403 storage cap exceeded` since the
+repository was created. Creating the bucket and the key is not the last step;
+the cap in *Caps & Alerts* is. See the incident record above.
+
 Both repositories use the same key, so there is one secret to protect rather
 than two. Lifecycle rules on the bucket are left at *keep all versions*:
 retention is enforced by `restic forget`, and a second policy on the provider
@@ -233,14 +301,40 @@ A backup that has never been restored is an assumption, not a backup.
 Record the date of the last successful restore test here, so that a stale test is
 visible rather than forgotten:
 
-- Last tier 1 restore test: *never*
+- Last tier 1 restore test, local repository: **2026-08-13, passed**
+- Last tier 1 restore test, off-site repository: *never* — blocked on the B2 cap
 - Last tier 2 restore test: *never*
+
+The 2026-08-13 run verified the repository structure with `restic check`,
+re-read 2% of the data packs byte for byte, and restored a 12.7 MiB file whose
+SHA-256 matched the original exactly. It also confirmed the `rpi-01`
+configuration tarball extracts and contains `nginx`, `wireguard`, `cloudflared`
+and the AdGuard working directory.
+
+**This is a partial result and should not be read as more.** It proves that
+restic, the repository format and the stored password all work. It says nothing
+about whether a usable copy exists anywhere other than the machine being backed
+up — and that machine went down hard eight days earlier.
+
+Note for whoever writes the next test: the paths inside the `rpi-01` tarball are
+relative to a staging directory, so its contents appear as `./nginx` and not
+`./etc/nginx`. A verification that greps for the latter reports everything
+missing from a perfectly good archive.
 
 ## Monitoring Gap
 
+This is no longer a theoretical gap. It has now failed twice in one week, and
+both incidents above went unnoticed for days precisely because nothing was
+watching. The off-site backup failed *every night since it was created* while
+the system reported healthy-looking local snapshots.
+
 Backup failure detection currently has nowhere to go. Prometheus scrapes metrics
 but there is no `alertmanager` installed and no `rule_files` configured, so a
-backup job that silently stops running would not surface until it was needed.
+backup job that silently stops running does not surface until it is needed.
+
+Worth noting: `homelab-backup.service` already exits non-zero when the B2 leg
+fails, and `systemctl` has been recording those failures faithfully. The
+information existed. Nothing was reading it.
 
 The intended rule, once the alerting layer exists:
 
@@ -278,15 +372,19 @@ impossible by construction.
 
 ## Remaining Work
 
-1. Configure the B2 repository and run the first off-site backup
-2. Back up `rpi-01` service configuration through the staging area
-3. Schedule the weekly `vzdump` job on `virt`
-4. Perform the first restore test and record the date above
-5. Add the staleness alert once Alertmanager exists
+1. **Raise the Backblaze storage cap and run the first successful off-site
+   backup.** Everything else on this list is secondary to it
+2. Perform the tier 1 restore test against B2 once step 1 lands
+3. Restore a VM to a scratch VMID and boot it, for the tier 2 test
+4. Fit a UPS to `vault`, and set its BIOS to power on after AC loss
+5. Deploy Alertmanager and add the staleness alert
 
 ## Notes
 
 Tier 1 protects against accidental deletion today, and nothing more. Fire, theft
-and ransomware are still unmitigated until step 1 is done, and nothing here is
-proven until step 4.
+and ransomware remain entirely unmitigated: the only copies that exist are on the
+same machine, in the same room, on the same power supply — and that machine spent
+six days of the last week switched off.
+
+The local copy is doing its job well. It is simply not the job that matters most.
 

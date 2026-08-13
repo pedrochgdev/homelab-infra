@@ -10,9 +10,15 @@ The roadmap reflects both practical needs and learning goals.
 
 The highest-priority items at this stage are:
 
-1. implement the backup strategy, since there are currently no backups of any kind
-2. close the inbound IPv6 firewall rule that exposes `rpi-01` on ports 80 and 443
-3. deploy Alertmanager, so that collected metrics can actually raise a failure
+1. raise the Backblaze storage cap, because every off-site upload has been
+   rejected since the repository was created and no copy exists outside the house
+2. fit a UPS to `vault` and set its BIOS to power on after AC loss, after it
+   stopped dead for six days and took both backup tiers with it
+3. close the inbound IPv6 firewall rule on the router; the host side was closed
+   on 2026-08-13
+4. deploy Alertmanager, so that collected metrics can actually raise a failure —
+   both of the incidents above were visible in `systemctl` and in the journal for
+   days, and nothing was reading them
 4. audit every service bound to `::` against the router's IPv6 policy, starting with Samba on `vault` and the Proxmox interface on `virt`
 5. restore GPU acceleration on `synthia`, which currently falls back to CPU inference
 6. reduce the concentration of edge roles on `rpi-01`, which now carries DNS, VPN, reverse proxy, and public ingress
@@ -35,14 +41,14 @@ The highest-priority items at this stage are:
 ### Storage and Data Protection
 
 The strategy is defined in [`docs/runbooks/backups.md`](runbooks/backups.md).
-None of it is implemented yet; there are currently no backups of any kind.
+The machinery is built and the local tier works; the off-site tier has never
+completed a single upload.
 
-- create `lv_backup` on the ~780 GB of unallocated space in `vg0` on `vault`, mounted at `/srv/backup` outside the Samba shares
-- configure `restic` for tier 1 against Backblaze B2 and a local repository
-- run the first backup and verify it with `restic check`
-- schedule the daily run with a systemd timer
-- schedule a weekly `vzdump` job on `virt` writing to `vault`
-- perform the first restore test and record the date
+- raise the Backblaze storage cap and run the first successful off-site backup
+- repeat the tier 1 restore test against B2 once that lands; the local one
+  passed on 2026-08-13
+- restore a VM to a scratch VMID and boot it, for the tier 2 test
+- give `vault` a UPS so the next power event ends in a clean shutdown
 
 ### Alerting
 
@@ -95,7 +101,8 @@ and no `rule_files`. This blocks failure detection for storage and backups alike
   manual lookup and config edit
 - confirm what actually refreshes the DuckDNS record, since nothing on `rpi-01` does
 - document WireGuard peers and define a key rotation practice
-- decide whether Tailscale-based access is still needed now that WireGuard exists
+- confirm client profiles set `DNS` to AdGuard, or `.home.arpa` names fail to
+  resolve away from home even with the tunnel up
 - improve remote administration design over time
 
 ## Long-Term Goals
@@ -122,7 +129,7 @@ and no `rule_files`. This blocks failure detection for storage and backups alike
 The following architectural questions are still open:
 
 - whether the edge tier on `rpi-01` should be split so public ingress no longer shares a host with internal DNS and VPN
-- whether Tailscale should be retired now that WireGuard provides direct access
+- whether `vault` should stop being both the backup destination and the NFS host for tier 2, since losing it stops both tiers at once
 - how should storage backup policy vary between media, personal files, shared data, and infrastructure backups
 - whether SMB remains the preferred long-term method for serving media to `atlas`
 - how far to push network segmentation and service isolation in the current hardware environment

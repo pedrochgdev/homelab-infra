@@ -121,8 +121,13 @@ directly over live data turns a recoverable mistake into a second incident.
 
 For `rpi-01` configuration, restore the relevant directory, compare against what
 is running, and reload the service rather than replacing files blindly. WireGuard
-and Cloudflare credentials are inside these paths, so restored files must keep
-restrictive ownership and permissions.
+credentials, Cloudflare credentials and the internal CA's root key are inside
+these paths, so restored files must keep restrictive ownership and permissions.
+
+The `rpi-01` tarball stores paths relative to a staging directory, so its
+contents are `./nginx`, `./wireguard`, `./cloudflared`, `./homelab-ca` — not
+`./etc/nginx`. Expect that when listing it, and do not conclude the archive is
+empty because the `etc/` prefix is missing.
 
 ### Tier 2 — virtual machines
 
@@ -139,6 +144,22 @@ qmrestore /srv/backup/dump/vzdump-qemu-101-<timestamp>.vma.zst 101 --force
 
 Always restore to a scratch VMID first when the original still exists. `--force`
 destroys the current disk.
+
+**Bring the restored VM up with its network interface down.** A restored guest
+carries the original's static address, so booting a copy of `dns` alongside the
+real one puts two hosts on `192.168.1.52` and takes out the secondary resolver
+for the whole network — during what was supposed to be a safe verification.
+
+```sh
+qm set 999 --net0 virtio=<mac>,bridge=vmbr0,link_down=1
+qm start 999
+# verify it reaches a login prompt, then
+qm destroy 999
+```
+
+Note also that the dumps live on `vault` and are reached over NFS from `virt`.
+If `vault` is the thing that failed, tier 2 is unreachable until it is back —
+the two are not independent.
 
 ### Tier 3 — media
 
