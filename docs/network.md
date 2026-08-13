@@ -216,19 +216,37 @@ tunnel is unaffected because `cloudflared` delivers over loopback, which `ufw`
 does not filter. Verified after the change: the tunnel still serves and the
 internal proxy still answers.
 
-Still outstanding: the router forwards ports to `rpi-01`. The host now refuses
-that traffic on its own, so the exposure is closed, but until the forwarding
-rules go the node stays reachable and therefore scannable.
+Still outstanding: whatever on the router still permits inbound traffic to
+`rpi-01`. The host refuses it on its own now, so the exposure is closed, but until
+the router stops accepting it the node stays reachable and therefore scannable.
 
-**Remove only the `80/tcp` and `443/tcp` forwards.** The rule for `51820/udp` is
-what makes WireGuard reachable from outside, and deleting it costs remote access
-to the whole homelab.
+The router configuration has not been inspected, so what follows is inference
+from evidence rather than a record of what is there.
 
-| Forward | Purpose | Action |
-|---|---|---|
-| `51820/udp` | WireGuard endpoint | Keep — required |
-| `80/tcp` | Retired DuckDNS vhost | Remove |
-| `443/tcp` | Retired DuckDNS vhost | Remove |
+**The way in was almost certainly IPv6, not IPv4.** The connection has a real
+routable public IPv4 address, not CGNAT. Port `80` on such an address is scanned
+many times a day, yet three weeks of nginx logs contain **zero** IPv4 requests
+against thousands over IPv6. Had `80` or `443` been forwarded on IPv4, that
+traffic would be unmistakable.
+
+This means two different places in the router need checking, and only one of them
+is "port forwarding":
+
+**IPv4 — port forwarding.** NAT means an explicit rule is needed for anything to
+reach a host inside. Expect to find `51820/udp → 192.168.1.30` here. **That rule
+must stay**: it is what makes WireGuard reachable, and removing it costs remote
+access to the entire homelab. Remove `80` or `443` entries if any exist.
+
+**IPv6 — firewall.** There is no NAT in IPv6; every node already holds its own
+globally routable address, so nothing is being "forwarded". A router firewall
+decides whether inbound traffic is allowed, and consumer routers frequently ship
+with it disabled or permissive. In that case there is no specific rule to delete
+— there is a setting to enable.
+
+That explanation fits the evidence: scanners reached `rpi-01` because it was the
+only node with a service listening *and* permitted by its own firewall. The same
+packets very likely reached every other node too, and were dropped by `ufw`
+without anyone noticing.
 
 The general lesson is worth keeping: **host-based routing is not access control.
 A reverse proxy is a set of doors into the network, and what decides who may
