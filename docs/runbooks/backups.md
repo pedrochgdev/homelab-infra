@@ -18,9 +18,12 @@ All three tiers are built. One of them has never worked.
 |---|---|
 | `lv_backup` on `vg0`, 400 GB, mounted at `/srv/backup` | Working |
 | restic repository, local | Working |
-| restic repository, Backblaze B2 (`homelab-vault-arpa`) | **Failing since day one** |
+| restic repository, external disk (`homelab-offsite`) | Working, first copy 2026-08-13 |
+| restic repository, Backblaze B2 (`homelab-vault-arpa`) | Set aside; the nightly job still fails on this leg |
 | Daily backup of `/srv/nas/users` and `/srv/nas/backups`, local leg | Working, 03:30 |
-| Daily backup, B2 leg | **Failing every night** |
+| Daily backup, B2 leg | Failing every night until removed from the script |
+| Off-site copy on plugging the drive in | Automatic via `udev` |
+| Staleness alert if the drive is not seen for 30 days | Done |
 | Vaultwarden backup from `atlas` into the staging area | Working, 02:00 |
 | `rpi-01` service configuration into the staging area | Working, 02:20 |
 | Tier 2, weekly `vzdump` of the three VMs over NFS | Working, Saturdays 01:00 |
@@ -36,20 +39,27 @@ strongest argument this document can make for the alerting layer it still lacks.
 
 ### The off-site copy never existed
 
-Every B2 upload since the repository was created has been rejected:
+Every B2 upload since the repository was created was rejected:
 
 ```
 403: Cannot upload files, storage cap exceeded.
 ```
 
 The Backblaze account's storage cap sits below what the repository needs — the
-free allowance is 10 GB and tier 1 is roughly 48 GB. The daily job logged `FALLO
-backup en b2` every single night and the service exited non-zero every single
-night, and nothing was watching.
+free allowance is 10 GB and tier 1 is roughly 43 GB stored. The daily job logged
+`FALLO backup en b2` every single night and the service exited non-zero every
+single night, and nothing was watching.
 
 The local leg succeeded throughout, which is why the failure was easy to miss:
-snapshots kept appearing on schedule and looked like a working system. **The
-tier that protects against fire, theft and ransomware has never held a byte.**
+snapshots kept appearing on schedule and looked like a working system. **The tier
+that protects against fire, theft and ransomware had never held a byte.**
+
+Resolved 2026-08-13 by replacing the destination rather than paying for it. See
+[Off-site: external disk](#off-site-external-disk).
+
+Worth recording what the cost actually was, since the decision was made on
+price: 43 GB at B2's rate, minus the 10 GB free allowance, comes to about **0.22
+USD per month**. The obstacle was putting a card on file, not the amount.
 
 ### `vault` was dead for six days
 
@@ -240,30 +250,71 @@ not warranted yet.
 
 ## Destinations
 
-### Off-site: Backblaze B2
+### Off-site: external disk
 
-Bucket `homelab-vault-arpa`, private, with an application key scoped to that
-bucket alone. Credentials live in `/root/.config/restic/b2.env` on `vault`,
-mode 600.
+A 1 TB USB drive holding a third restic repository, carried out of the house.
 
-This is the only destination that survives fire, theft, or ransomware. Roughly
-48 GB at B2 pricing costs on the order of 0.30 USD per month.
+| | |
+|---|---|
+| Device | Toshiba MQ04UBF100, serial `Z2CPP1F2T` — a 2.5" mechanical drive, not an SSD |
+| Filesystem | ext4, label `homelab-offsite`, mounted at `/srv/offsite` |
+| Repository | `/srv/offsite/restic`, same key as the other two |
+| First copy | 2026-08-13, 20,662 files, 42.8 GiB stored, verified |
 
-**The account cap must be raised before any of this is true.** Backblaze's free
-allowance is 10 GB, and the account is configured below what tier 1 needs, so
-every upload has been rejected with `403 storage cap exceeded` since the
-repository was created. Creating the bucket and the key is not the last step;
-the cap in *Caps & Alerts* is. See the incident record above.
+**The value of this tier depends entirely on where the drive lives.** Plugged
+into `vault` it is a third copy in the same room, on the same power supply,
+protecting against nothing the RAID does not already cover. Kept elsewhere and
+brought back periodically, it is the only thing standing between a house fire and
+total loss.
 
-Both repositories use the same key, so there is one secret to protect rather
-than two. Lifecycle rules on the bucket are left at *keep all versions*:
-retention is enforced by `restic forget`, and a second policy on the provider
-side would fight with it.
+That distinction cannot be enforced by any script, which is why it is stated here
+rather than assumed.
 
-Note that the restic invocation needs `HOME` defined to use its local cache.
-systemd units start without it, so `homelab-backup.service` sets
-`Environment=HOME=/root` explicitly. Without that, every run re-downloads index
-metadata from B2.
+Scripts do enforce the rest:
+
+- a `udev` rule starts `homelab-offsite.service` when a filesystem labelled
+  `homelab-offsite` appears, so the procedure is plug in, wait for the phone,
+  unplug — a monthly ritual that has to be remembered is a ritual that stops
+  happening
+- the run backs up, prunes to 12 recent plus 12 monthly, verifies with
+  `restic check --read-data-subset=2%`, and unmounts before notifying, so the
+  drive is never pulled mid-write
+- **on failure the timestamp is not updated and the alert is urgent.** The
+  failure mode being designed against is walking away with a drive believed to
+  hold a fresh copy
+- `homelab-offsite-vigilar.timer` checks daily and warns after 30 days, urgently
+  after 60
+
+The drive is mechanical and travels, so it deserves more care than a flash
+device: never unplug without unmounting, and do not move it while it is spinning.
+
+**The repository password now matters more than it ever has.** It lives on
+`vault`, which is the machine this tier exists to survive. If a fire takes
+`vault`, what remains is a drive full of ciphertext. A paper copy must exist, and
+must not travel with the drive — the two together defeat the encryption that
+makes carrying it safe at all.
+
+### Off-site alternative not taken: Backblaze B2
+
+The bucket `homelab-vault-arpa` and its scoped key still exist, and
+`homelab-backup.sh` still tries to use them, so the nightly job will keep
+reporting a failed B2 leg until that is removed.
+
+It was set aside on cost preference rather than on the merits. For the record,
+43 GB stored at B2's rate less the 10 GB free allowance is about **0.22 USD per
+month**, and restoring it once falls inside the free egress allowance. The
+obstacle was putting a card on file.
+
+Compared with the external drive it wins on one axis and loses on another: it
+needs no discipline and updates nightly without anyone touching anything, but it
+costs money and puts the data with a third party. The drive is free and fully
+under control, and is exactly as current as the last time someone remembered to
+bring it home.
+
+Note for whenever it is reinstated: the restic invocation needs `HOME` defined to
+use its local cache. systemd units start without it, so `homelab-backup.service`
+sets `Environment=HOME=/root`. Without that, every run re-downloads index
+metadata.
 
 ### Local: new logical volume on `vault`
 
@@ -372,19 +423,31 @@ impossible by construction.
 
 ## Remaining Work
 
-1. **Raise the Backblaze storage cap and run the first successful off-site
-   backup.** Everything else on this list is secondary to it
-2. Perform the tier 1 restore test against B2 once step 1 lands
+1. **Take the external drive out of the house.** Until it lives elsewhere there
+   is still no off-site copy, only a third one in the same room
+2. Remove the B2 leg from `homelab-backup.sh`, so the nightly job stops failing
+   and a real failure is once again visible
 3. Restore a VM to a scratch VMID and boot it, for the tier 2 test
 4. Fit a UPS to `vault`, and set its BIOS to power on after AC loss
-5. Deploy Alertmanager and add the staleness alert
+5. Write the repository password on paper and keep it away from the drive
+6. Review `/srv/nas/backups/servers/maincore`: 9.5 GB of manual tarballs from
+   March 2026, a fifth of every copy, probably superseded
+7. Deploy Alertmanager
 
 ## Notes
 
-Tier 1 protects against accidental deletion today, and nothing more. Fire, theft
-and ransomware remain entirely unmitigated: the only copies that exist are on the
-same machine, in the same room, on the same power supply — and that machine spent
-six days of the last week switched off.
+The single most valuable thing in tier 1 is not configuration or documents. It is
+`/srv/nas/users/drocho/media`, 29 GB of personal photographs and video — 68% of
+the whole repository, and the only part of this system that cannot be rebuilt,
+re-downloaded or reinstalled.
 
-The local copy is doing its job well. It is simply not the job that matters most.
+That figure is worth knowing because it was nearly excluded. Media is deliberately
+outside the backup at tier 3, and this directory looked like more of the same
+until it was examined: 169 files, mostly HEIC and JPEG. The lesson generalises —
+a rule written for one directory should not be applied to another by name alone.
+
+With the external drive in place there are now three copies. Two of them sit in
+the same room, on the same power supply, in a machine that spent six days of the
+last week switched off for reasons still unknown. **The third only counts once it
+leaves the house.**
 
