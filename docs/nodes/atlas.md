@@ -115,8 +115,8 @@ then remove `/srv/media`, which would reclaim 126 GB and drop disk usage from
 
 - consolidate the 14 orphaned media files onto `vault` and reclaim `/srv/media`
 - reboot to activate the pending kernel
-- verify the Bitwarden Android application accepts the internal CA, the one
-  remaining unknown in the Vaultwarden TLS arrangement
+- configure SMTP on Vaultwarden, without which the instance can send nothing:
+  no password hints, no email two-factor, no alerts
 - verify hardware transcoding still behaves correctly against NAS-backed media
 - confirm playback behavior when `vault` is unavailable, given the `soft` mount
 - document the compose stacks in `configs/`

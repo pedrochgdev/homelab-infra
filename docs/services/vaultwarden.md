@@ -77,6 +77,14 @@ LAN segment where the alternative was plaintext.
 Vaultwarden keeps `ROCKET_TLS` and its own self-signed certificate, which is what
 secures that final hop.
 
+`DOMAIN` must be set to `https://pass.home.arpa` and not to the address the
+container happens to listen on. It is the origin Vaultwarden considers its own,
+and it determines the links in Sends and — the part that bites — **the origin
+recorded when a passkey or WebAuthn second factor is registered**. A wrong value
+causes no visible problem until a passkey is enrolled and then fails to validate
+when connecting by the proper name, at which point the symptom points nowhere
+near the cause.
+
 The CA lives on `rpi-01`. See [`docs/nodes/rpi-01.md`](../nodes/rpi-01.md#internal-certificate-authority)
 for the certificate parameters and renewal.
 
@@ -97,18 +105,54 @@ HTTPS to obtain the CA would be circular. What is published is the public half.
 Every new device needs this once. That recurring cost is the price of not
 depending on a public CA.
 
-### Outstanding
+### Verified on a real device
 
-Since Android API 24, applications do not trust user-installed CAs unless they
-declare it in their network security configuration. **Whether the Bitwarden
-Android application does so has not yet been verified on a real device.** Until
-that test is performed, mobile support is expected rather than confirmed.
+This was the open question of the whole design, and it was not a safe
+assumption: since Android API 24, applications do not trust user-installed CAs
+unless they declare it in their network security configuration, and nothing
+guaranteed the Bitwarden client did.
+
+**Confirmed 2026-08-13: with the root certificate installed, the mobile
+application synchronises against `https://pass.home.arpa`.** The arrangement
+works end to end, and the fallback plan — registering a public domain and issuing
+through DNS-01 — is not needed.
+
+Worth keeping in mind that this holds for the client version tested. An
+application update that tightened its trust configuration would break access
+without any change on the server, and the symptom would be a certificate error
+that no amount of server-side debugging explains.
 
 ## Access Control
 
 `SIGNUPS_ALLOWED` is set to `false`. Registration was open only long enough to
 create the first account, since an open instance on the LAN lets anyone create
 their own vault on it.
+
+## No Email
+
+No SMTP is configured, so the instance cannot send anything: no password hints,
+no email two-factor, no notifications. This is worth stating plainly because the
+failure is silent — the web vault accepts a "send me my hint" request and reports
+success, and nothing ever arrives.
+
+The password hint is stored in the `users` table and can be read directly from
+the database when needed.
+
+**A hint is not a recovery mechanism.** The master password derives the
+encryption key on the client; the server never holds it. There is no reset that
+preserves the vault, with database access, admin rights or physical access to the
+machine. That property is the reason to run this software, and it is also what
+makes losing the password final.
+
+The master password therefore belongs somewhere outside every system it
+protects — on paper, alongside the restic repository key. Those two secrets share
+a property nothing else in the homelab has: no backup can restore them, because
+they are what the backups are encrypted with.
+
+This was learned the direct way. The first account, created 2026-07-24, became
+unreachable when its master password was forgotten, and was recreated on
+2026-08-13. It cost nothing because the vault was still empty; the same mistake
+later would have been unrecoverable.
 
 ## Backups
 
