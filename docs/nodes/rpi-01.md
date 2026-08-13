@@ -43,6 +43,8 @@ on it.
 | `wg-quick@wg0` | WireGuard VPN endpoint | `wg0`, `10.8.0.1/24` |
 | `cloudflared` | Cloudflare tunnel to publish one vhost | outbound only |
 | `node_exporter` | Metrics for Prometheus | `9100` |
+| AdGuard Home — DoT | Encrypted DNS with the internal certificate | `853`, LAN and VPN only |
+| `homelab-ddns.timer` | Publishes this node's IPv6 as an `AAAA` record | outbound only, every 5 min |
 | dnsmasq | proxyDHCP + TFTP for the workstation's remote boot menu (no DNS, `port=0`) | `67`, `69`, `4011`, `10000-10100/udp` |
 
 The remote boot stack (dnsmasq config, TFTP tree, and the `wake-pc` /
@@ -125,6 +127,41 @@ Holding the signing key on the proxy is a deliberate trade. It is what allows
 renewal to be automatic, and in exchange a compromise of `rpi-01` would permit
 impersonating any internal name. That was already true of a node terminating TLS
 for every internal service, so it adds no new class of risk.
+
+## Dynamic DNS
+
+The VPN entry point is reachable only over IPv6, on a prefix the ISP rotates
+roughly monthly. `homelab-ddns.timer` runs every five minutes and publishes this
+node's current address as an `AAAA` record, so client `Endpoint` settings can be
+a name and never need editing.
+
+| Path | Purpose |
+|---|---|
+| `/usr/local/bin/homelab-ddns.sh` | The updater |
+| `/etc/homelab-ddns/cloudflare.env` | API token and record name, mode 600 in a 700 directory |
+| `/var/log/homelab-ddns.log` | Only records changes and failures |
+
+Three properties are deliberate, each replacing a defect in the DuckDNS updater
+this succeeded:
+
+**The credentials are not in the script.** The previous one was
+world-readable with the token inline, so any local account could repoint the
+record.
+
+**A failure is never recorded as a success.** The old script wrote its history
+file unconditionally, so a rejected update would be remembered as done and never
+retried. This one records only what the API confirms, exits non-zero otherwise,
+and sends an alert.
+
+**It compares against the provider, not a local file.** A state file says what
+was believed to be published; only the API says what actually is. That difference
+catches both a failed publish and a record edited from elsewhere.
+
+Address selection excludes `deprecated` and `temporary` addresses. After a
+rotation the previous address lingers for about a day, so taking the first one
+listed can publish an address that no longer receives traffic.
+
+Notifications go to a private `ntfy` topic, on change and on failure.
 
 ### Naming Note
 

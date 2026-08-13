@@ -105,6 +105,33 @@ There are currently three distinct remote access paths:
 `10.8.0.0/24`, with the node itself at `10.8.0.1`. This is a direct VPN entry
 point into the homelab LAN.
 
+**It reaches the node over IPv6 only, and that is not a choice.** The connection
+is behind carrier-grade NAT — a traceroute leaves the router into three
+consecutive hops in `10.0.0.0/8` — so no inbound IPv4 path exists or can be
+created. The router reflects this exactly: `DEFAULTWAN` on `ppp0` drops all
+inbound with zero exceptions, while `DEFAULTWANv6` drops all inbound except a
+single rule permitting `UDP 51820` to the `/128` of `rpi-01`.
+
+The practical consequence: **the VPN cannot be used from a network without IPv6**,
+which includes most university and corporate WiFi. The fallback is mobile data.
+Fixing that would mean an outbound-connection design — a rented relay, or
+Cloudflare WARP — and has been deliberately deferred.
+
+The ISP rotates the delegated prefix roughly monthly, sometimes twice within
+days:
+
+```
+2026-05-03  2001:1388:80d:fc3::/64      2026-07-02  …:f3f3::/64
+2026-06-02  …:fde8::/64                 2026-08-02  …:c2a3::/64
+2026-06-05  …:169f::/64                 2026-08-05  …:f6c6::/64
+```
+
+Only the prefix changes; the interface identifier derives from the MAC and is
+stable. Address lifetimes are about 3 days valid and 2 days preferred, so for
+roughly 24 hours after a rotation the old address is still present but deprecated
+— which is why anything selecting an address must exclude deprecated and
+temporary ones rather than taking the first it finds.
+
 **Tailscale.** Earlier revisions of this document listed Tailscale as a live
 remote access path. That is not the case: it is installed on none of the homelab
 nodes and none of the workstations. Either it was removed or it was documented
@@ -117,10 +144,29 @@ publishes a single external hostname to the local nginx instance on
 workstation (`192.168.1.109`), not to homelab infrastructure. TLS is terminated
 by Cloudflare, so no certificate is managed locally for this path.
 
-**Dynamic DNS.** A DuckDNS record tracks the ISP-assigned public IP. It does not
-publish any service. Its purpose is recovery: when the ISP changes the public IP,
-the WireGuard tunnel breaks, and the DuckDNS record is where the current address
-can be looked up in order to reconnect.
+**Dynamic DNS.** `rpi-01` publishes its own global IPv6 address as an `AAAA`
+record, so the WireGuard `Endpoint` on client devices is a name rather than an
+address that expires. Earlier revisions of this document said the updater "lives
+elsewhere, most likely the router". It does not, and never did: it has always run
+on `rpi-01`.
+
+The record is `vpn.<zone>` in a Cloudflare zone, TTL 60, **deliberately not
+proxied** — Cloudflare's proxy does not forward UDP and would break WireGuard
+without any obvious symptom.
+
+This replaced a DuckDNS updater that had three defects worth recording, since
+they are easy to repeat:
+
+- the API token sat in a world-readable script, so any local account could
+  repoint the record
+- `curl -sk` disabled certificate validation while transmitting that token
+- **it recorded every attempt as successful.** If the provider had returned an
+  error, the history file would still say the address was published, and nothing
+  would retry until the next rotation
+
+The replacement compares against what the DNS provider actually holds rather than
+against a local state file. A state file records what was believed to be
+published; only the API knows what is.
 
 A previous setup also served the project directly over `443` on the DuckDNS
 hostname, using a Let's Encrypt certificate from Certbot. That vhost has been
@@ -406,7 +452,7 @@ The rule sets on the nodes other than `vault` have not been recorded here yet.
 - public exposure terminates on the same node that serves internal DNS and VPN, so the edge tier has no isolation from the internal tier
 - the reverse proxy depends on a workstation address inside the DHCP pool
 - WireGuard peer inventory is not documented
-- nothing on `rpi-01` refreshes the DuckDNS record, so the updater lives elsewhere (most likely the router) and has not been verified
+- remote access has no path that works from an IPv4-only network, so a WiFi without IPv6 means falling back to mobile data
 
 ## Planned Network Improvements
 
