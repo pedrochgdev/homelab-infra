@@ -16,7 +16,7 @@ reverse proxy, and a Cloudflare tunnel that publishes one project externally. Se
 - DNS: AdGuard Home on `rpi-01`, with a secondary instance on `dns` (`192.168.1.52`)
 - DHCP Pool: `192.168.1.100` to `192.168.1.199`
 - Addressing for homelab nodes: static manual IP assignment
-- IPv6: globally routable addresses in `2001:1388:80d:f3f3::/64`, delegated by the ISP router and currently unmanaged
+- IPv6: globally routable addresses in `2001:1388:80d:f6c6::/64`, delegated by the ISP router and currently unmanaged. **The delegated prefix changes**: it was `…:f3f3::/64` when first documented and every node had moved to `…:f6c6::/64` by 2026-08-13. Anything keyed to a specific IPv6 address — a firewall rule, a DNS record, a document — goes stale silently when that happens
 
 ## Addressing Scheme
 
@@ -288,6 +288,31 @@ belong were removed on 2026-08-13; see [Retired Exposure](#retired-exposure).
 
 The `69`, `4011`, `10000:10100` and `67` rules belong to the remote boot service,
 documented in [`docs/services/remote-boot.md`](services/remote-boot.md).
+
+Note there is no rule for `8080`, where AdGuard's admin interface listens. It is
+reachable only through the reverse proxy, which reaches it over loopback. That is
+the stricter arrangement, and it is worth not "fixing".
+
+### `dns`
+
+```
+22/tcp     ALLOW  192.168.1.0/24
+53/tcp,udp ALLOW  192.168.1.0/24
+53/tcp,udp ALLOW  10.8.0.0/24
+8080/tcp   ALLOW  192.168.1.0/24
+8080/tcp   ALLOW  10.8.0.0/24
+9100/tcp   ALLOW  192.168.1.50
+```
+
+Both resolvers bind AdGuard to all interfaces and both hold globally routable
+IPv6 addresses, which raises the obvious question of whether either is an open
+resolver. Neither is: `ufw` on both has `IPV6=yes` and `DEFAULT_INPUT_POLICY`
+`DROP`, and every rule is scoped to an IPv4 range, so nothing matches over IPv6.
+
+Confirmed by measurement — a DNS query to a node's global IPv6 address on port
+`53` times out, while the same query to its IPv4 address answers. The absence of
+`(v6)` lines in `ufw status` is not evidence of unfiltered IPv6; rules scoped to
+an IPv4 subnet simply have no IPv6 counterpart to print.
 
 Undocumented here: `atlas`, `monitor` and `synthia`, whose rule sets have not
 been recorded yet.

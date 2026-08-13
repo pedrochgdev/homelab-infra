@@ -51,10 +51,20 @@ configuration and are documented here so the dependency is visible:
 
 ## IPv6
 
-Every node also holds a globally routable IPv6 address in the
-`2001:1388:80d:f3f3::/64` prefix, delegated by the ISP router. IPv6 is currently
-unplanned and undocumented at the addressing level: there is no static
-assignment scheme, and firewall posture for IPv6 has not been reviewed.
+Every node also holds a globally routable IPv6 address, currently in the
+`2001:1388:80d:f6c6::/64` prefix delegated by the ISP router. IPv6 is unplanned
+and undocumented at the addressing level: there is no static assignment scheme,
+and addresses derive from the interface MAC.
+
+**The delegated prefix is not stable.** It was `2001:1388:80d:f3f3::/64` when
+first recorded and every node had moved to `…:f6c6::/64` by 2026-08-13, without
+anything being changed locally. Any rule, record or document pinned to a specific
+IPv6 address stops matching when the ISP rotates the delegation, and does so
+silently — the address simply stops existing.
+
+That instability cuts both ways. It makes IPv6 addresses useless as stable
+identifiers, and it also means an inbound firewall rule written against one
+address quietly stops protecting anything.
 
 This is not theoretical. An audit found internet scanner traffic reaching nginx
 on `rpi-01` over IPv6, on a path that proxied through to the personal
@@ -66,6 +76,16 @@ bound to `::` is reachable from outside the LAN if the router firewall permits
 it. Services currently bound to `::` that have not been audited against the
 router's IPv6 policy include Samba on `vault` (`[::]:445`, `[::]:139`), SSH on
 every node, and the Proxmox interface on `virt` (`*:8006`).
+
+Binding to all interfaces is not itself the problem, as the DNS nodes show. Both
+resolvers bind AdGuard to every interface, yet neither answers over IPv6 because
+`ufw` runs with `IPV6=yes` and a default `DROP` policy, and every allow rule is
+scoped to an IPv4 range. Verified by querying a node's global IPv6 address on
+port `53`: it times out, while IPv4 answers.
+
+What matters is whether a host has a firewall whose default denies, not what the
+service binds to. `virt` is the gap here, since the Proxmox firewall is enabled
+but applied to no guest.
 
 ## Notes
 
