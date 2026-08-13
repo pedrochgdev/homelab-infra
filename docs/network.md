@@ -276,11 +276,11 @@ from `virt`.
 answers only to peers holding a valid key. The two `Anywhere` rules that did not
 belong were removed on 2026-08-13; see [Retired Exposure](#retired-exposure).
 
+The `69`, `4011`, `10000:10100` and `67` rules belong to the remote boot service,
+documented in [`docs/services/remote-boot.md`](services/remote-boot.md).
+
 Undocumented here: `atlas`, `monitor` and `synthia`, whose rule sets have not
 been recorded yet.
-
-The node also runs a PXE and TFTP boot service that appears in no other document
-in this repository.
 
 ### `virt` and its guests
 
@@ -302,7 +302,6 @@ The rule sets on the nodes other than `vault` have not been recorded here yet.
 - the Proxmox firewall is enabled but not applied to any guest, since no VM has `firewall=1` on its network device
 - `ufw` rule sets are documented for `vault` and `rpi-01`; `atlas`, `monitor` and `synthia` are still unrecorded
 - IPv6 is delegated by the ISP and globally routable, but not planned, documented, or firewalled deliberately; an inbound allowance to `rpi-01` went unnoticed through two separate audits before the host-side rules were found
-- a PXE and TFTP boot service runs on `rpi-01` and is documented nowhere
 - services bound to `::` have not been audited against the router's IPv6 policy; `vault` listens on `[::]:445` for Samba and `virt` exposes the Proxmox interface on `*:8006`
 - public exposure terminates on the same node that serves internal DNS and VPN, so the edge tier has no isolation from the internal tier
 - the reverse proxy depends on a workstation address inside the DHCP pool
@@ -315,7 +314,7 @@ The rule sets on the nodes other than `vault` have not been recorded here yet.
 - introduce VLANs for more structured separation, starting by isolating the edge tier
 - define an IPv6 posture: either disable it or plan and firewall it deliberately
 - serve the remaining internal hostnames over TLS using the internal CA
-- record the `ufw` rules of the remaining nodes, and document the PXE service
+- record the `ufw` rules of `atlas`, `monitor` and `synthia`
 - give the workstation a static address or DHCP reservation
 - document WireGuard peers and key rotation
 - create a more professional network layout
