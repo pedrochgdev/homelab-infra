@@ -285,6 +285,17 @@ Scripts do enforce the rest:
 - `homelab-offsite-vigilar.timer` checks daily and warns after 30 days, urgently
   after 60
 
+**`udev` fires more than once for the same disk.** The first real test produced
+two runs, at 07:50 and 07:53. They happened to be harmless because the first had
+finished, but overlapping runs would have had two `restic` processes contending
+for one repository — one would fail, and the failure alert would have fired with
+nothing actually wrong. A false alarm is worse than no alarm, because it teaches
+you to ignore the real ones.
+
+Two guards now make that impossible rather than unlikely: an `flock` so only one
+run can hold the repository, and a check that skips entirely if a copy succeeded
+in the last ten minutes.
+
 The drive is mechanical and travels, so it deserves more care than a flash
 device: never unplug without unmounting, and do not move it while it is spinning.
 
