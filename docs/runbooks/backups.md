@@ -21,7 +21,8 @@ All three tiers are built. One of them has never worked.
 | restic repository, external disk (`homelab-offsite`) | Working, first copy 2026-08-13 |
 | restic repository, Backblaze B2 (`homelab-vault-arpa`) | Set aside; the nightly job still fails on this leg |
 | Daily backup of `/srv/nas/users` and `/srv/nas/backups`, local leg | Working, 03:30 |
-| Daily backup, B2 leg | Failing every night until removed from the script |
+| Daily backup, B2 leg | Removed 2026-08-13; the nightly job exits clean again |
+| Alerting on backup failure and staleness | Done, via `ntfy` |
 | Off-site copy on plugging the drive in | Automatic via `udev` |
 | Staleness alert if the drive is not seen for 30 days | Done |
 | Vaultwarden backup from `atlas` into the staging area | Working, 02:00 |
@@ -385,18 +386,41 @@ missing from a perfectly good archive.
 
 ## Monitoring Gap
 
-This is no longer a theoretical gap. It has now failed twice in one week, and
-both incidents above went unnoticed for days precisely because nothing was
-watching. The off-site backup failed *every night since it was created* while
-the system reported healthy-looking local snapshots.
+This was not a theoretical gap. It failed twice in one week, and both incidents
+above went unnoticed for days precisely because nothing was watching. The
+off-site backup failed *every night since it was created* while the system
+reported healthy-looking local snapshots.
 
-Backup failure detection currently has nowhere to go. Prometheus scrapes metrics
-but there is no `alertmanager` installed and no `rule_files` configured, so a
-backup job that silently stops running does not surface until it is needed.
+The information existed the whole time. `homelab-backup.service` exited non-zero
+every night and `systemctl` recorded it faithfully. Nothing was reading it.
 
-Worth noting: `homelab-backup.service` already exits non-zero when the B2 leg
-fails, and `systemctl` has been recording those failures faithfully. The
-information existed. Nothing was reading it.
+### Closed, without Alertmanager
+
+Alertmanager is still not installed, and it turned out not to be the blocker.
+Once a notification channel existed, the rule this document had been asking for
+took about fifteen lines:
+
+| Alert | Trigger | Priority |
+|---|---|---|
+| Daily backup failed | Non-zero exit from the nightly run | urgent |
+| **No successful backup in 48 h** | `homelab-backup-vigilar.timer`, daily at 09:00 | urgent |
+| Off-site copy failed | Non-zero exit when the drive is plugged in | urgent |
+| Off-site copy stale | 30 days, urgent at 60 | high |
+| VPN address changed or failed to publish | `homelab-ddns.sh` | default / urgent |
+
+The 48-hour rule matters for a reason distinct from failure detection, and it is
+the one that would have caught August. **A job that stops running produces no
+failures to report.** When `vault` was switched off for six days there was
+nothing to exit non-zero, no log line, no error — only an absence. Alerting on
+staleness catches the absence; alerting on errors never can.
+
+The distinction is worth carrying into whatever gets monitored next: an error
+means something went wrong, silence can mean anything at all.
+
+Removing the B2 leg was part of this rather than mere tidying. While it stayed,
+`homelab-backup.service` failed every night, so a genuine failure of the local
+copy would have produced exactly the signal that had been ignored for weeks. **An
+alarm that always sounds is not an alarm.**
 
 The intended rule, once the alerting layer exists:
 
@@ -436,14 +460,13 @@ impossible by construction.
 
 1. **Take the external drive out of the house.** Until it lives elsewhere there
    is still no off-site copy, only a third one in the same room
-2. Remove the B2 leg from `homelab-backup.sh`, so the nightly job stops failing
-   and a real failure is once again visible
-3. Restore a VM to a scratch VMID and boot it, for the tier 2 test
-4. Fit a UPS to `vault`, and set its BIOS to power on after AC loss
-5. Write the repository password on paper and keep it away from the drive
-6. Review `/srv/nas/backups/servers/maincore`: 9.5 GB of manual tarballs from
+2. Write the repository password on paper and keep it away from the drive
+3. Fit a UPS to `vault`, and set its BIOS to power on after AC loss
+4. Restore a VM to a scratch VMID and boot it, for the tier 2 test
+5. Review `/srv/nas/backups/servers/maincore`: 9.5 GB of manual tarballs from
    March 2026, a fifth of every copy, probably superseded
-7. Deploy Alertmanager
+6. Deploy Alertmanager for the metrics Prometheus already collects — the backup
+   alerts no longer depend on it
 
 ## Notes
 
