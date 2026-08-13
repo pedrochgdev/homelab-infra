@@ -216,9 +216,19 @@ tunnel is unaffected because `cloudflared` delivers over loopback, which `ufw`
 does not filter. Verified after the change: the tunnel still serves and the
 internal proxy still answers.
 
-Still outstanding: the inbound rule on the router. The host now refuses this
-traffic on its own, so the exposure is closed, but until the router rule goes the
-node stays scannable.
+Still outstanding: the router forwards ports to `rpi-01`. The host now refuses
+that traffic on its own, so the exposure is closed, but until the forwarding
+rules go the node stays reachable and therefore scannable.
+
+**Remove only the `80/tcp` and `443/tcp` forwards.** The rule for `51820/udp` is
+what makes WireGuard reachable from outside, and deleting it costs remote access
+to the whole homelab.
+
+| Forward | Purpose | Action |
+|---|---|---|
+| `51820/udp` | WireGuard endpoint | Keep — required |
+| `80/tcp` | Retired DuckDNS vhost | Remove |
+| `443/tcp` | Retired DuckDNS vhost | Remove |
 
 The general lesson is worth keeping: **host-based routing is not access control.
 A reverse proxy is a set of doors into the network, and what decides who may
