@@ -79,9 +79,8 @@ does not depend on NAS availability.
 Jellyfin is intended for internal LAN and VPN access. It listens on port `8096`
 and is also reachable through the reverse proxy on `rpi-01`.
 
-There is no public exposure of this service. Remote access is available through
-the WireGuard VPN on `rpi-01`, or indirectly through the personal workstation
-using Tailscale and remote desktop.
+There is no public exposure of this service. Remote access is over the WireGuard
+VPN on `rpi-01`.
 
 ## Current State
 
@@ -116,7 +115,8 @@ then remove `/srv/media`, which would reclaim 126 GB and drop disk usage from
 
 - consolidate the 14 orphaned media files onto `vault` and reclaim `/srv/media`
 - reboot to activate the pending kernel
-- replace the Vaultwarden self-signed certificate with a Let's Encrypt one
+- verify the Bitwarden Android application accepts the internal CA, the one
+  remaining unknown in the Vaultwarden TLS arrangement
 - verify hardware transcoding still behaves correctly against NAS-backed media
 - confirm playback behavior when `vault` is unavailable, given the `soft` mount
 - document the compose stacks in `configs/`

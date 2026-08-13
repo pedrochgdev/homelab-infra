@@ -9,6 +9,10 @@ extensions.
 It runs in Docker on `atlas` and is intended for LAN and VPN access only. There
 is no public exposure.
 
+Access is through `https://pass.home.arpa`, proxied by `rpi-01` with a
+certificate signed by the homelab's own certificate authority. Remote access is
+over WireGuard; the service is never published to the internet.
+
 ## Host
 
 - Node: `atlas` (`192.168.1.22`)
@@ -35,23 +39,70 @@ browser's secure-context requirement for WebCrypto — the client performs its o
 scheme check and rejects `http://` even on `localhost`, so an SSH tunnel is not a
 workaround.
 
-Vaultwarden therefore terminates TLS itself through `ROCKET_TLS`, currently using
-a self-signed certificate valid for 825 days, with subject alternative names for
-`vaultwarden.home.arpa`, `localhost`, `192.168.1.22` and `127.0.0.1`.
-
-Access: `https://192.168.1.22:8222`, accepting the certificate warning once.
-
-### Limitation
-
-Self-signed certificates are workable in a browser, where an exception can be
+Self-signed certificates clear that bar in a browser, where an exception can be
 stored, but the Bitwarden mobile applications reject them outright and offer no
-way to add an exception. **Mobile clients cannot be used until a real
-certificate is in place.**
+way to add an exception. Making the mobile clients usable therefore required a
+certificate signed by an authority the device already trusts.
 
-The intended fix is a Let's Encrypt certificate issued through the DNS-01
-challenge against the existing Cloudflare-hosted domain, with an internal A
-record. That yields a publicly valid certificate for an internally reachable
-address, without exposing the service.
+### Why not a public certificate
+
+No public CA can issue for `home.arpa`. It is a reserved special-use domain
+(RFC 8375), and CA/Browser Forum rules have prohibited certificates for internal
+names since 2015 — nobody can demonstrate control over a name that belongs to
+every network at once.
+
+That restriction binds public CAs, not the operator of the network. An internal
+CA can sign for `home.arpa`, and the resulting certificate is cryptographically
+identical to a public one. What differs is that the trust is installed on the
+devices rather than shipped with them.
+
+The alternative considered was registering a public domain and issuing through
+DNS-01, which would work on every device without installing anything. It was
+rejected because it means depending on an external registrar and CA for a service
+that never leaves the LAN.
+
+### Current arrangement
+
+```
+client → https://pass.home.arpa        (resolved by AdGuard to 192.168.1.30)
+       → nginx on rpi-01                certificate signed by the internal CA
+       → https://192.168.1.22:8222      Vaultwarden's own self-signed cert
+```
+
+`rpi-01` terminates the trusted certificate and proxies onward with
+`proxy_ssl_verify off`, because the backend certificate is not signed by the
+internal CA. The hop stays encrypted; only its authenticity is unverified, over a
+LAN segment where the alternative was plaintext.
+
+Vaultwarden keeps `ROCKET_TLS` and its own self-signed certificate, which is what
+secures that final hop.
+
+The CA lives on `rpi-01`. See [`docs/nodes/rpi-01.md`](../nodes/rpi-01.md#internal-certificate-authority)
+for the certificate parameters and renewal.
+
+### Installing trust on a device
+
+The root certificate is published at `http://ca.home.arpa/`, reachable from the
+LAN and over WireGuard. It is served over HTTP deliberately: a device that does
+not yet trust the CA cannot validate a certificate signed by it, so requiring
+HTTPS to obtain the CA would be circular. What is published is the public half.
+
+| Platform | Procedure |
+|---|---|
+| Android | Settings → Security → Encryption & credentials → Install a certificate → **CA certificate** |
+| iOS | Install the profile, then Settings → General → About → **Certificate Trust Settings** and enable full trust. The second step is mandatory and easily missed |
+| Windows | `certutil -addstore -f Root homelab-ca.crt` as administrator |
+| Firefox | Uses its own trust store: import separately, or set `security.enterprise_roots.enabled` |
+
+Every new device needs this once. That recurring cost is the price of not
+depending on a public CA.
+
+### Outstanding
+
+Since Android API 24, applications do not trust user-installed CAs unless they
+declare it in their network security configuration. **Whether the Bitwarden
+Android application does so has not yet been verified on a real device.** Until
+that test is performed, mobile support is expected rather than confirmed.
 
 ## Access Control
 
