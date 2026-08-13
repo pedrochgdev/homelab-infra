@@ -84,8 +84,18 @@ reverse proxy on `rpi-01`.
 | `adguard.home.arpa` | `http://127.0.0.1:8080` (AdGuard on `rpi-01`) |
 | `adguard2.home.arpa` | `http://192.168.1.52:8080` (AdGuard on `dns`) |
 | `osiris.home.arpa` | `http://192.168.1.52:8080` |
+| `pass.home.arpa` | `https://192.168.1.22:8222` (Vaultwarden, over TLS) |
+| `ca.home.arpa` | Static: the internal CA root certificate |
 
 Jellyfin on `192.168.1.22:8096` is also proxied through this node.
+
+All `.home.arpa` names resolve through a single wildcard rewrite in AdGuard,
+`*.home.arpa → 192.168.1.30`, present on both instances. Adding a name therefore
+requires an nginx vhost and no DNS change at all.
+
+`pass.home.arpa` is served over `443` with a certificate signed by the internal
+CA on `rpi-01`. The other names are still plain `80`; extending the certificate
+to them costs nothing further and is listed under planned work.
 
 ## Remote Access
 
@@ -95,8 +105,10 @@ There are currently three distinct remote access paths:
 `10.8.0.0/24`, with the node itself at `10.8.0.1`. This is a direct VPN entry
 point into the homelab LAN.
 
-**Tailscale.** The personal workstation remains reachable through Tailscale, and
-remote desktop into it is still usable as an administrative path to the LAN.
+**Tailscale.** Earlier revisions of this document listed Tailscale as a live
+remote access path. That is not the case: it is installed on none of the homelab
+nodes and none of the workstations. Either it was removed or it was documented
+from intent rather than from the running system. WireGuard is the only VPN.
 
 **Cloudflare tunnel.** `cloudflared` runs on `rpi-01` and is the only intended
 public entry point. It establishes an outbound connection to Cloudflare and
@@ -170,9 +182,47 @@ first-loaded vhost when no `default_server` is declared, so removing the DuckDNS
 vhost alone would have promoted the project vhost to implicit default and started
 proxying unmatched scanner traffic straight to the workstation.
 
-Still outstanding: the inbound IPv6 firewall rule on the router should be
-removed. Until then the host remains reachable and scannable, even though nginx
-now refuses to serve those requests.
+### The host side was still open
+
+The remediation above was incomplete, and a later audit found why. `ufw` on
+`rpi-01` had been accepting ports `80` and `443` **from any source, IPv4 and
+IPv6 alike** — four rules left behind when the DuckDNS vhost was withdrawn. The
+vhost was removed; the door it needed was not.
+
+The full retained nginx log history contained **264 requests from 145 distinct
+external IPv6 addresses**, and not a single legitimate external client. The
+payloads were a protocol sweep rather than web traffic: OPC UA, the Bitcoin wire
+protocol, DICOM, iSCSI, Oracle TNS, LDAP StartTLS, XMPP. All 564 requests for the
+published project arrived over loopback from `cloudflared`, never through the
+open port.
+
+This mattered more than the catch-all suggested, because **the catch-all only
+stops hostnames nginx does not recognise**. Verified against the running proxy:
+
+```
+Host: proxmox.home.arpa   ->  HTTP 200   (Proxmox interface)
+Host: monitor.home.arpa   ->  HTTP 302   (Grafana)
+Host: osiris.home.arpa    ->  HTTP 302   (Jellyfin)
+Host: unknown.example.com ->  444        (catch-all)
+```
+
+Any external client sending a `Host` header nginx knows was proxied into the LAN.
+None of those names are secret, and `proxmox.home.arpa` is close to the first
+name anyone would try.
+
+Remediation, 2026-08-13: the four unscoped rules were deleted, leaving `80` and
+`443` reachable only from `192.168.1.0/24` and `10.8.0.0/24`. The Cloudflare
+tunnel is unaffected because `cloudflared` delivers over loopback, which `ufw`
+does not filter. Verified after the change: the tunnel still serves and the
+internal proxy still answers.
+
+Still outstanding: the inbound rule on the router. The host now refuses this
+traffic on its own, so the exposure is closed, but until the router rule goes the
+node stays scannable.
+
+The general lesson is worth keeping: **host-based routing is not access control.
+A reverse proxy is a set of doors into the network, and what decides who may
+knock is the firewall.**
 
 ## Host Firewalls
 
@@ -203,6 +253,35 @@ These are well scoped. The metrics exporters accept connections only from
 `monitor` rather than from the whole LAN, and the NFS export is reachable only
 from `virt`.
 
+### `rpi-01`
+
+```
+22/tcp           ALLOW  192.168.1.0/24
+22               ALLOW  10.8.0.0/24
+53/tcp,udp       ALLOW  192.168.1.0/24
+53/tcp,udp       ALLOW  10.8.0.0/24
+80/tcp           ALLOW  192.168.1.0/24
+80/tcp           ALLOW  10.8.0.0/24
+443/tcp          ALLOW  192.168.1.0/24
+443/tcp          ALLOW  10.8.0.0/24
+51820/udp        ALLOW  Anywhere            (WireGuard, necessarily public)
+9100/tcp         ALLOW  192.168.1.50
+69/udp           ALLOW  192.168.1.0/24      (TFTP)
+4011/udp         ALLOW  192.168.1.0/24      (PXE)
+10000:10100/udp  ALLOW  192.168.1.0/24      (TFTP data)
+67/udp on eth0   ALLOW  Anywhere            (PXE DHCP, source is 0.0.0.0)
+```
+
+`51820/udp` is open to the world by necessity — it is the VPN entry point, and it
+answers only to peers holding a valid key. The two `Anywhere` rules that did not
+belong were removed on 2026-08-13; see [Retired Exposure](#retired-exposure).
+
+Undocumented here: `atlas`, `monitor` and `synthia`, whose rule sets have not
+been recorded yet.
+
+The node also runs a PXE and TFTP boot service that appears in no other document
+in this repository.
+
 ### `virt` and its guests
 
 The Proxmox firewall is enabled at cluster level with `policy_in: DROP`. There
@@ -221,8 +300,9 @@ The rule sets on the nodes other than `vault` have not been recorded here yet.
 - no VLAN isolation
 - no dedicated management network
 - the Proxmox firewall is enabled but not applied to any guest, since no VM has `firewall=1` on its network device
-- `ufw` rule sets are documented only for `vault`
-- IPv6 is delegated by the ISP and globally routable, but not planned, documented, or firewalled deliberately; an inbound allowance to `rpi-01` went unnoticed until an audit found scanner traffic in the logs
+- `ufw` rule sets are documented for `vault` and `rpi-01`; `atlas`, `monitor` and `synthia` are still unrecorded
+- IPv6 is delegated by the ISP and globally routable, but not planned, documented, or firewalled deliberately; an inbound allowance to `rpi-01` went unnoticed through two separate audits before the host-side rules were found
+- a PXE and TFTP boot service runs on `rpi-01` and is documented nowhere
 - services bound to `::` have not been audited against the router's IPv6 policy; `vault` listens on `[::]:445` for Samba and `virt` exposes the Proxmox interface on `*:8006`
 - public exposure terminates on the same node that serves internal DNS and VPN, so the edge tier has no isolation from the internal tier
 - the reverse proxy depends on a workstation address inside the DHCP pool
@@ -231,8 +311,11 @@ The rule sets on the nodes other than `vault` have not been recorded here yet.
 
 ## Planned Network Improvements
 
+- remove the inbound IPv6 rule on the router, the last piece of the retired exposure
 - introduce VLANs for more structured separation, starting by isolating the edge tier
 - define an IPv6 posture: either disable it or plan and firewall it deliberately
+- serve the remaining internal hostnames over TLS using the internal CA
+- record the `ufw` rules of the remaining nodes, and document the PXE service
 - give the workstation a static address or DHCP reservation
 - document WireGuard peers and key rotation
 - create a more professional network layout

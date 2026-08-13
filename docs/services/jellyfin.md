@@ -31,7 +31,7 @@ the application no longer depends on local disk for content.
 - Port: 8096
 - Exposure: internal LAN and VPN, also reachable through the reverse proxy on `rpi-01`
 
-Remote access is available over the WireGuard VPN on `rpi-01`, or indirectly through the personal workstation using Tailscale and remote desktop.
+Remote access is over the WireGuard VPN on `rpi-01`.
 
 ## Media and Storage
 
