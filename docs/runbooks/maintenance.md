@@ -121,18 +121,21 @@ As the homelab becomes a platform for cybersecurity learning, maintenance should
 
 Maintenance maturity is still incomplete in the following areas:
 
-- SMART monitoring on `vault`
-- formal backup checks
-- restore validation
+- backup failure and staleness alerts run through `ntfy`; broader metric alerting still needs Alertmanager
+- restore validation is partial: tier 1 passed locally on 2026-08-13, tier 2 never
 - documented maintenance schedule
 - structured change records for major architecture updates
+
+Resolved since this list was first written: SMART monitoring on `vault` is
+deployed and scraped by `monitor`, and the media migration to `vault` is
+complete.
 
 ## Immediate Next Steps
 
 The next practical maintenance improvements should be:
 
-1. add storage health monitoring on `vault`
-2. improve dashboard quality in Grafana
-3. complete the media migration plan from `atlas` to `vault`
+1. perform the tier 2 restore test
+2. deploy Alertmanager and wire the existing metrics into alerts
+3. improve dashboard quality in Grafana
 4. document future major changes before executing them
 5. continue cleaning and organizing the rack physically

@@ -10,15 +10,16 @@ The roadmap reflects both practical needs and learning goals.
 
 The highest-priority items at this stage are:
 
-1. raise the Backblaze storage cap, because every off-site upload has been
-   rejected since the repository was created and no copy exists outside the house
+1. take the external off-site drive out of the house — until it lives elsewhere
+   there is still no copy that survives fire or theft, only a third one in the
+   same room
 2. fit a UPS to `vault` and set its BIOS to power on after AC loss, after it
    stopped dead for six days and took both backup tiers with it
 3. close the inbound IPv6 firewall rule on the router; the host side was closed
    on 2026-08-13
-4. deploy Alertmanager, so that collected metrics can actually raise a failure —
-   both of the incidents above were visible in `systemctl` and in the journal for
-   days, and nothing was reading them
+4. deploy Alertmanager for the metrics Prometheus already collects — the backup
+   alerts no longer depend on it, since failure and staleness alerting now runs
+   through `ntfy`
 4. audit every service bound to `::` against the router's IPv6 policy, starting with Samba on `vault` and the Proxmox interface on `virt`
 5. restore GPU acceleration on `synthia`, which currently falls back to CPU inference
 6. reduce the concentration of edge roles on `rpi-01`, which now carries DNS, VPN, reverse proxy, and public ingress
@@ -35,20 +36,26 @@ The highest-priority items at this stage are:
 - secondary DNS instance deployed on the `dns` VM, with failover tested
 - retired the DuckDNS vhost on `rpi-01` and added an explicit catch-all vhost,
   closing the direct serving path from the internet to the workstation
+- all three backup tiers implemented: daily restic to local and Backblaze B2,
+  staged dumps from `atlas` and `rpi-01`, and weekly `vzdump` of the VMs
+- Vaultwarden deployed on `atlas`, backed up nightly from day one
+- internal CA deployed, with TLS termination on `rpi-01` for
+  `pass.home.arpa` and the root certificate served at `ca.home.arpa`
 
 ## Short-Term Goals
 
 ### Storage and Data Protection
 
 The strategy is defined in [`docs/runbooks/backups.md`](runbooks/backups.md).
-The machinery is built and the local tier works; the off-site tier has never
-completed a single upload.
+All three tiers run: the off-site tier is now an external disk (first verified
+copy 2026-08-13) after B2 was set aside on cost preference. The tier 1 restore
+test passed locally on 2026-08-13.
 
-- raise the Backblaze storage cap and run the first successful off-site backup
-- repeat the tier 1 restore test against B2 once that lands; the local one
-  passed on 2026-08-13
+- take the external drive out of the house, and keep the repository password on
+  paper away from it
 - restore a VM to a scratch VMID and boot it, for the tier 2 test
 - give `vault` a UPS so the next power event ends in a clean shutdown
+- remove the dead B2 leg remnants (bucket and scoped key still exist)
 
 ### Alerting
 
@@ -61,8 +68,8 @@ and no `rule_files`. This blocks failure detection for storage and backups alike
 - route notifications somewhere that reaches a phone
 
 ### Raspberry Pi
-- document and back up the configuration of the services it now runs
-- verify that DNS failover to the `dns` VM actually works
+- configuration backup is in place (nightly at 02:20 into the staging area on `vault`)
+- DNS failover to the `dns` VM has been tested and works
 - decide whether public ingress should move off this node
 - keep cluster experimentation as a longer-term goal
 

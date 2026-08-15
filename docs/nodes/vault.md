@@ -45,10 +45,10 @@ cannot fill the root filesystem:
 | `vg0-lv_var` | 40 GB | `/var` |
 | `vg0-lv_swap` | 8 GB | swap |
 
-`sda4` is 928.5 GiB and only 148 are allocated, leaving roughly **780 GB
-unallocated** in `vg0`. This space is earmarked as the local backup destination
-described in [`docs/runbooks/backups.md`](../runbooks/backups.md), mounted at
-`/srv/backup` and deliberately kept outside the Samba shares.
+`sda4` is 928.5 GiB. Beyond the volumes above, a 400 GB `lv_backup` volume is
+mounted at `/srv/backup` as the local backup destination described in
+[`docs/runbooks/backups.md`](../runbooks/backups.md), deliberately kept outside
+the Samba shares. Roughly 380 GB remain unallocated in `vg0`.
 
 ## RAID Implementation
 
@@ -142,19 +142,26 @@ Health monitoring is in place:
 
 Media migration from `atlas` is complete; the media share is consumed over SMB.
 
+Backups are implemented: `vault` hosts the restic repositories (local on
+`/srv/backup`, plus an off-site copy on an external drive mounted at
+`/srv/offsite` when plugged in), sweeps the staging area nightly at 03:30, and
+receives weekly `vzdump` dumps from `virt` over NFS. Backup failure and
+staleness alerts run through `ntfy`. See
+[`docs/runbooks/backups.md`](../runbooks/backups.md).
+
 Still pending:
 
-- backup policy is not yet defined
-- recovery procedures are not yet documented
+- the tier 2 restore test has never been performed (tier 1 passed locally on 2026-08-13)
 - alerting rules on top of the SMART metrics are not yet defined
 
 ## Operational Priorities
 
 The main current priorities for `vault` are:
 
-- define backup policy by data type
-- define recovery expectations and procedures
+- perform and record the tier 2 restore test
 - turn the existing SMART and RAID metrics into actual alerts
+- fit a UPS and set the BIOS to power on after AC loss, after the six-day outage
+  of August 2026
 - improve storage security and operational discipline
 
 ## Risk Notes
@@ -162,10 +169,11 @@ The main current priorities for `vault` are:
 RAID 1 provides redundancy against single-drive failure, but it is not a backup.
 
 At present, the system still lacks:
-- independent backup copies
-- recovery testing
+- recovery testing — tier 1 passed locally; tier 2 and the off-site drive are untested
 - SMART alerting
 - formal incident response for storage faults
+- an off-homelab copy of the restic repository key, which is the single point of
+  failure for the whole backup scheme
 
 ## Position in the Homelab
 

@@ -123,10 +123,12 @@ Media migration from `atlas` is complete, and disk health monitoring is running:
 `smartmontools`, `mdmonitor`, and `smartctl_exporter` on port `9633`, scraped by
 `monitor`.
 
+Backups are implemented and running on schedule; see
+[`docs/runbooks/backups.md`](../runbooks/backups.md).
+
 Operational maturity is still incomplete in the following areas:
 
-- no defined backup policy yet
-- no documented recovery workflow yet
+- no restore test has ever been performed
 - no alerting rules on top of the collected SMART metrics
 - no tested incident response process yet
 
@@ -147,15 +149,16 @@ A real protection model still needs to define:
 
 ## Planned Improvements
 
-The backup strategy is now defined in
-[`docs/runbooks/backups.md`](../runbooks/backups.md), including which directories
-are treated as irreplaceable and where copies go. None of it is implemented yet.
+The backup strategy defined in
+[`docs/runbooks/backups.md`](../runbooks/backups.md) is fully implemented: all
+three tiers run on schedule, with `/srv/nas/users` and the staging area going
+daily to the local repository, and to an off-site external drive whenever it is
+plugged in.
 
 The following items are current priorities:
 
-- implement the backup tiers, starting with `/srv/nas/users`
+- perform and record the tier 2 restore test
 - define alerting rules on top of the existing SMART and RAID metrics
-- document recovery procedures
 - improve storage security posture
 - refine permission and access model before expanding to additional users
 
@@ -163,8 +166,8 @@ The following items are current priorities:
 
 Current known risk areas include:
 
-- absence of independent backups
+- backups exist but have never been restore-tested
 - disk health metrics are collected but not alerted on
-- lack of formal recovery testing
 - narrow access model without broader controls
-- incomplete separation between active storage and protected backup strategy
+- the restic repository key lives only on `vault` itself; a copy outside the
+  homelab is required for an off-site restore to be possible at all

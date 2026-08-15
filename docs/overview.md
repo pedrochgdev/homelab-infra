@@ -45,7 +45,7 @@ This node is the main platform for virtualization and service consolidation.
 
 The NAS is already operational. It uses a dedicated OS disk and a mirrored RAID 1 storage array built with two 4 TB Toshiba N300 drives for data storage.
 
-The media migration is complete: Jellyfin on `atlas` now consumes the library over SMB rather than local disk. Current work is focused on data protection strategy, backup planning, and recovery procedures.
+The media migration is complete: Jellyfin on `atlas` now consumes the library over SMB rather than local disk. The backup tiers defined in the runbooks are implemented, with `vault` hosting the local restic repository, an off-site copy on an external drive, and nightly sweeps of the staged dumps; the remaining data-protection work is the tier 2 restore test and keeping the off-site drive out of the house.
 
 This node is intentionally separated from the main AI workload environment in order to keep storage stable and predictable.
 
@@ -76,7 +76,7 @@ Roles are defined clearly enough to maintain operational structure, but the over
 The current infrastructure priorities are:
 
 1. restore GPU acceleration on `synthia`, which currently runs inference on CPU
-2. formalize backup and recovery strategy for `vault`
+2. finish proving the backup strategy — tier 1 restored cleanly from the local repository on 2026-08-13, but tier 2 and the off-site drive remain untested
 3. reduce the concentration of edge roles on `rpi-01` and isolate public ingress from internal services
 4. define an IPv6 posture, since every node holds a globally routable address
 5. continue using `virt` as the main virtualization node

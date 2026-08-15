@@ -59,9 +59,8 @@ The environment is organized around a few core principles:
 - `README.md` — repository overview
 - `docs/` — architecture, nodes, services, and operational documentation
 - `inventory/` — hardware, addressing, and storage inventory
-- `configs/` — sanitized configuration references
-- `scripts/` — maintenance and automation scripts
-- `diagrams/` — topology and rack diagrams
+
+Planned but not yet created: `configs/` (sanitized configuration references), `scripts/` (maintenance and automation scripts), and `diagrams/` (topology and rack diagrams).
 
 ## Key Documentation
 

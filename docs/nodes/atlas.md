@@ -93,7 +93,7 @@ months. Media storage is centralized on `vault` as intended.
 - the host may be renamed later to better reflect its service role
 - Docker holds an unused `infra_net` network, suggesting a stack defined and
   never deployed
-- a reboot is pending: the running kernel is `6.8.0-106` while `6.8.0-136` is
+- a reboot is pending: the running kernel is `6.8.0-106` while `6.8.0-137` is
   installed, so several months of kernel patches are staged but inactive
 
 ### Leftover local media

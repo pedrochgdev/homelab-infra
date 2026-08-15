@@ -5,10 +5,11 @@
 This document defines how recovery is approached in the homelab, organized around
 the tiers defined in [`docs/runbooks/backups.md`](backups.md).
 
-**Restore capability is currently zero.** Not limited — absent. No backups exist,
-so none of the procedures below can be executed today. They describe what
-recovery will look like once the backup implementation is in place, and they are
-written now so that the procedures exist before the incident does.
+All three backup tiers are implemented, so the procedures below are executable.
+The tier 1 restore test passed against the local repository on 2026-08-13,
+proving restic, the repository format and the stored password. Tier 2 has never
+been exercised, and no restore has been performed from the off-site drive, so
+those procedures remain assumptions until tested.
 
 ## Recovery Principles
 
@@ -96,13 +97,12 @@ When multiple systems are affected, recovery should prioritize:
 
 ## Restore Procedures by Tier
 
-These become executable once the corresponding backup tier exists.
-
 ### Tier 1 — personal data and edge configuration
 
-Restores come from the `restic` repository. Prefer the local repository on
-`/srv/backup` for speed, and fall back to Backblaze B2 when the local copy is
-gone or suspect.
+Restores come from the `restic` repositories. Prefer the local repository on
+`/srv/backup` for speed, and fall back to the off-site external drive (label
+`homelab-offsite`, mounted at `/srv/offsite`) when the local copy is gone or
+suspect. The same key opens every repository.
 
 ```sh
 # What snapshots exist
@@ -112,8 +112,8 @@ restic -r /srv/backup/restic snapshots
 restic -r /srv/backup/restic restore latest \
   --target /tmp/restore --include /srv/nas/users/drocho/<path>
 
-# Same operation against the off-site copy
-restic -r b2:<bucket>:/ restore latest --target /tmp/restore --include <path>
+# Same operation against the off-site drive, once plugged in and mounted
+restic -r /srv/offsite/restic restore latest --target /tmp/restore --include <path>
 ```
 
 Restore to `/tmp/restore` first and copy into place after inspection. Restoring
@@ -173,8 +173,8 @@ Rough targets, to be validated by the first restore test:
 | Scenario | Expected effort |
 |---|---|
 | Single file from local repository | Minutes |
-| Single file from B2 | Minutes, bounded by download speed |
-| Full tier 1 restore from B2 | Hours, dominated by 39 GB download |
+| Single file from the off-site drive | Minutes, once the drive is fetched and mounted |
+| Full tier 1 restore from the off-site drive | Hours, dominated by copying ~43 GB over USB |
 | One VM from local dump | Under an hour |
 | `vault` host rebuild plus array reassembly | A day, largely manual |
 
@@ -182,10 +182,8 @@ Rough targets, to be validated by the first restore test:
 
 The homelab does not yet have:
 
-- any backups at all, so no restore is currently possible
-- restore-tested backup sets
+- a tested tier 2 restore, or any restore from the off-site drive
 - documented service rebuild procedures for `atlas` and `virt`
-- alerting that would reveal a backup job that stopped running
 
 ## Minimum Future Restore Scope
 
@@ -214,16 +212,14 @@ Any restore procedure should validate:
 
 The next practical recovery improvements should be:
 
-1. implement the backup tiers, following
-   [`docs/runbooks/backups.md`](backups.md#implementation-order)
-2. perform one small restore test and record the date in the backups runbook
-3. create a rebuild checklist for `atlas`
-4. create a rebuild checklist for `virt`
-5. measure the actual recovery times and replace the estimates above
+1. restore a VM to a scratch VMID and boot it, completing the tier 2 test
+2. create a rebuild checklist for `atlas`
+3. create a rebuild checklist for `virt`
+4. measure the actual recovery times and replace the estimates above
 
 ## Notes
 
-The procedures here are written against a backup implementation that does not
-exist yet. They are deliberately specific anyway: writing them now surfaces what
-the backup design has to support, and an incident is the worst moment to be
-designing a recovery process from scratch.
+These procedures were written before the backup implementation existed, and the
+implementation now matches them. What remains is proving them: until the first
+restore test is performed, every procedure here is untested on real data, and an
+incident is the worst moment to discover a gap.

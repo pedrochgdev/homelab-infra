@@ -94,6 +94,11 @@ Note the shape of the dependency this exposed: `vault` holds the backups *and*
 hosts the NFS export that tier 2 writes into. When it goes, both tiers stop
 together.
 
+Live verification on 2026-08-15, after recovery, confirmed every producer back
+on schedule: the Vaultwarden job on `atlas` and the configuration job on
+`rpi-01` both succeeded that morning, and `vault-dump` holds dumps of all three
+VMs from the 01:00 run the same day.
+
 ### Schedule
 
 ```
@@ -421,6 +426,13 @@ Removing the B2 leg was part of this rather than mere tidying. While it stayed,
 `homelab-backup.service` failed every night, so a genuine failure of the local
 copy would have produced exactly the signal that had been ignored for weeks. **An
 alarm that always sounds is not an alarm.**
+
+This is not hypothetical. The weekly `vzdump` run of 2026-08-08 failed with
+`could not activate storage 'vault-dump': storage 'vault-dump' is not online`
+— `vault` or its NFS export was unreachable at 01:00 that Saturday — and the
+failure went unnoticed until a manual audit found it a week later. The runs
+before and after succeeded, so the gap is a missing week of VM backups, but it
+demonstrates exactly the silent-failure mode this section warns about.
 
 The intended rule, once the alerting layer exists:
 
