@@ -86,6 +86,7 @@ reverse proxy on `rpi-01`.
 | `osiris.home.arpa` | `http://192.168.1.52:8080` |
 | `pass.home.arpa` | `https://192.168.1.22:8222` (Vaultwarden, over TLS) |
 | `ca.home.arpa` | Static: the internal CA root certificate |
+| `tarjeta.home.arpa` | `http://192.168.1.22:8090` (Tarjetero, over TLS) |
 
 Jellyfin on `192.168.1.22:8096` is also proxied through this node.
 
@@ -93,9 +94,15 @@ All `.home.arpa` names resolve through a single wildcard rewrite in AdGuard,
 `*.home.arpa → 192.168.1.30`, present on both instances. Adding a name therefore
 requires an nginx vhost and no DNS change at all.
 
-`pass.home.arpa` is served over `443` with a certificate signed by the internal
-CA on `rpi-01`. The other names are still plain `80`; extending the certificate
+`pass.home.arpa` and `tarjeta.home.arpa` are served over `443` with a
+certificate signed by the internal CA on `rpi-01`; the latter also redirects
+`80` to `443`. The other names are still plain `80`; extending the certificate
 to them costs nothing further and is listed under planned work.
+
+Note for any future vhost on this node: nginx here is `1.24.0`, which predates
+the `http2 on;` directive introduced in `1.25.1`. Using the modern form fails
+the config test with `unknown directive` and leaves the configuration unable to
+reload. Declare it the old way, `listen 443 ssl http2;`.
 
 ## Remote Access
 

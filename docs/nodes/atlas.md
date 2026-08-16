@@ -35,11 +35,38 @@ storage. `atlas` hosts the application; `vault` holds the data.
 |---|---|---|
 | Jellyfin | `8096` | Media server, NAS-backed library |
 | Vaultwarden | `8222` | Password manager, TLS terminated by the container |
+| Tarjetero | `8090` | Credit card payment reminders, internal only |
 
 Vaultwarden is documented separately in
 [`docs/services/vaultwarden.md`](../services/vaultwarden.md). It was placed here
 because Docker was already running, the node had spare capacity, and it is
 internal-only.
+
+Tarjetero is documented in
+[`docs/services/tarjetero.md`](../services/tarjetero.md) and was placed here for
+the same reasons.
+
+### `ufw` does not restrict a Docker-published port
+
+Found while deploying Tarjetero, and it applies to **every** container on this
+node. A rule such as `ufw allow from 192.168.1.30 to any port 8090` appears in
+`ufw status` and restricts nothing: Docker DNATs in `PREROUTING` and the traffic
+continues through `FORWARD`, while `ufw` filters in `INPUT`. The port answers the
+whole LAN regardless.
+
+Over IPv6 the behaviour inverts, because there `docker-proxy` is what listens and
+the traffic does traverse `INPUT`, so `ufw` blocks it correctly. The same port,
+filtered in one address family and open in the other, which is what makes this
+hard to notice.
+
+What works is the `DOCKER-USER` chain, applied from `/etc/ufw/after.rules`.
+Publishing on the LAN address rather than `0.0.0.0` additionally removes the
+`[::]` listener.
+
+**Worth auditing the other published ports on this node** — Jellyfin on `8096`
+and Vaultwarden on `8222` — since any `ufw` rule scoping them is likely doing
+nothing. The check is not reading `ufw status`; it is running `curl` from a host
+that should not be able to reach them.
 
 ## Storage Layout
 
