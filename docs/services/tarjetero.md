@@ -23,7 +23,7 @@ en contra de la prioridad de descargar el nodo de borde.
 |---|---|
 | Runtime | Node 24 en Alpine, un solo contenedor |
 | Base de datos | SQLite en `/srv/tarjetero/data/tarjetero.db`, modo WAL |
-| Puerto | `8090`, publicado en `192.168.1.22` y restringido a `192.168.1.30` por `DOCKER-USER`, **no** por `ufw` |
+| Puerto | `8090`, restringido por `ufw` a `192.168.1.30` |
 | Compose | `/srv/tarjetero/app/docker-compose.yml` |
 | Configuración | `/srv/tarjetero/app/.env`, modo 600 |
 
@@ -165,6 +165,11 @@ Lo comprobado midiendo, no leyendo configuración:
 | Aviso de prueba por `ntfy` | entregado |
 
 Una tarjeta dada de alta: corte el 5, pago el 10, `America/Lima`, `PEN`.
+
+La ingesta por IMAP está activa contra Gmail, acotada por remitente al banco.
+**No modifica el buzón**: no marca como leído, no mueve nada. El estado de qué
+se procesó vive en `ingest_raw.source_ref`, con índice único. Verificado: 14.515
+correos sin leer antes y después de la primera pasada.
 
 **La ventana entre corte y pago es de cinco días**, más corta que la de una
 tarjeta típica. Los recordatorios por defecto no cabían en ella y hubo que
