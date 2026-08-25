@@ -5,8 +5,9 @@
 `dns` is a virtual machine on `virt` that runs a secondary AdGuard Home instance,
 providing DNS redundancy for the primary resolver on `rpi-01`.
 
-It is published internally under two names, `adguard2.home.arpa` and
-`osiris.home.arpa`, both pointing at the same backend.
+It is published internally as `adguard2.home.arpa`. Earlier revisions also
+listed `osiris.home.arpa` here, but that name actually points at Jellyfin on
+`atlas`.
 
 ## Role
 
@@ -100,14 +101,14 @@ firewalled and would matter immediately if it ever were not.
 
 ## Naming Note
 
-Four names refer to this machine. The Proxmox VM is called `dns`, the guest's own
-hostname is **`dns-fallback`**, and the reverse proxy on `rpi-01` publishes it as
-both `adguard2.home.arpa` and `osiris.home.arpa`.
+Three names refer to this machine. The Proxmox VM is called `dns`, the guest's
+own hostname is **`dns-fallback`**, and the reverse proxy on `rpi-01` publishes
+it as `adguard2.home.arpa`. A fourth name, `osiris.home.arpa`, was long recorded
+as an alias of this machine; the running proxy shows it points at Jellyfin.
 
 The hostname was only discovered once the node was reachable over SSH; every
 earlier document assumed it matched the VM name. Consolidating on one name would
-reduce confusion, and `osiris.home.arpa` in particular says nothing about what
-the machine does.
+reduce confusion.
 
 ## Operational Notes
 

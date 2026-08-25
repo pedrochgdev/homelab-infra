@@ -83,12 +83,15 @@ reverse proxy on `rpi-01`.
 | `display.home.arpa` | `http://192.168.1.50:80` (static display page) |
 | `adguard.home.arpa` | `http://127.0.0.1:8080` (AdGuard on `rpi-01`) |
 | `adguard2.home.arpa` | `http://192.168.1.52:8080` (AdGuard on `dns`) |
-| `osiris.home.arpa` | `http://192.168.1.52:8080` |
+| `osiris.home.arpa` | `http://192.168.1.22:8096` (Jellyfin) |
 | `pass.home.arpa` | `https://192.168.1.22:8222` (Vaultwarden, over TLS) |
 | `ca.home.arpa` | Static: the internal CA root certificate |
 | `tarjeta.home.arpa` | `http://192.168.1.22:8090` (Tarjetero, over TLS) |
 
-Jellyfin on `192.168.1.22:8096` is also proxied through this node.
+`osiris.home.arpa` is the Jellyfin vhost — "Osiris" is the Jellyfin server's
+own configured name. Earlier revisions recorded it as a second alias of the
+AdGuard instance on `dns`; checking the running proxy shows that was never
+true.
 
 All `.home.arpa` names resolve through a single wildcard rewrite in AdGuard,
 `*.home.arpa → 192.168.1.30`, present on both instances. Adding a name therefore

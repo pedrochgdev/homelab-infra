@@ -313,9 +313,10 @@ makes carrying it safe at all.
 
 ### Off-site alternative not taken: Backblaze B2
 
-The bucket `homelab-vault-arpa` and its scoped key still exist, and
-`homelab-backup.sh` still tries to use them, so the nightly job will keep
-reporting a failed B2 leg until that is removed.
+The bucket `homelab-vault-arpa` and its scoped key still exist, but the B2 leg
+has been removed from `homelab-backup.sh` — verified live on 2026-08-25: the
+nightly job has exited clean every night since. Only the unused bucket and key
+remain to be deleted at the provider.
 
 It was set aside on cost preference rather than on the merits. For the record,
 43 GB stored at B2's rate less the 10 GB free allowance is about **0.22 USD per

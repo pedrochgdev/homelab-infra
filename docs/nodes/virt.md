@@ -111,7 +111,7 @@ Secondary internal DNS
 
 **Purpose**
 - run a second AdGuard Home instance as backup for the primary on `rpi-01`
-- published internally as `adguard2.home.arpa` and `osiris.home.arpa`
+- published internally as `adguard2.home.arpa`
 
 ## Current State
 

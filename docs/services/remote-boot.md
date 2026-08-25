@@ -247,9 +247,9 @@ Boot cost when everything works: ~52 s total (~25 s firmware including PXE,
 
 ## Pending
 
-- Physical-presence checks before trusting power-off + WoL end to end:
-  BIOS **Power On By PCI-E** enabled and **ErP** disabled
-  (Advanced → APM Configuration).
+- ~~Physical-presence checks before trusting power-off + WoL end to end~~
+  **Done 2026-08-25**: WoL from full power-off verified — `boot-pc` on `rpi-01`
+  powered the workstation on, so Power On By PCI-E and ErP are correctly set.
 - Windows side: disable Fast Startup or enable "Wake on Magic Packet" in the
   Intel driver, so WoL works after a Windows shutdown.
 - Optionally disable IPv6 in the BIOS Network Stack to drop the useless
