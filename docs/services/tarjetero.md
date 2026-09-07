@@ -113,10 +113,14 @@ Los avisos de pago llevan un botón "Ya pagué" que apunta a
 así que el botón funciona en casa o por VPN y no desde una red ajena. El aviso sí
 llega a cualquier parte, porque `ntfy` es saliente.
 
-Y la VPN, según [`docs/network.md`](../network.md#remote-access), no funciona
-desde redes sin IPv6. La salida, si alguna vez molesta lo suficiente, es publicar
-*sólo* ese endpoint por el túnel de Cloudflare; la URL ya va firmada con un HMAC
-acotado a un ciclo y a una operación, no con un secreto reutilizable.
+Con la migración a Tailscale (2026-08-29) esta limitación quedó prácticamente
+resuelta: el celular lleva el tailnet consigo, el split DNS resuelve
+`tarjeta.home.arpa` desde fuera, y el vhost admite el rango `100.64.0.0/10`,
+así que el botón funciona desde cualquier red donde Tailscale esté activo. La
+alternativa de publicar *sólo* ese endpoint por el túnel de Cloudflare queda
+anotada por si algún día se quiere que funcione sin VPN; la URL ya va firmada
+con un HMAC acotado a un ciclo y a una operación, no con un secreto
+reutilizable.
 
 ## Backups
 

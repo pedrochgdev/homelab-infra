@@ -131,7 +131,13 @@ allows traffic in on `tailscale0` and forwarding from `tailscale0` to `eth0`.
 `.home.arpa` names do not resolve for tailnet clients by themselves — their DNS
 never touches AdGuard. The fix is split DNS in the Tailscale admin panel:
 domain `home.arpa` → nameserver `192.168.1.30`. Without it, clients reach
-services by IP only.
+services by IP only. Configured and verified from the phone on 2026-08-29.
+
+One more thing bites tailnet clients: **nginx vhosts with IP allowlists**. A
+connection over Tailscale reaches nginx on this node with a `100.64.0.0/10`
+source address, which the `tarjeta` and `rutina` allowlists (LAN plus the old
+WireGuard subnet) rejected with `403` until `allow 100.64.0.0/10;` was added.
+Any future vhost that restricts by source address needs the same line.
 
 **WireGuard — disabled 2026-08-29.** Until then `rpi-01` terminated a WireGuard
 tunnel on `wg0` (`10.8.0.0/24`, node at `10.8.0.1`). It was replaced because it
