@@ -20,19 +20,22 @@ The highest-priority items at this stage are:
 4. deploy Alertmanager for the metrics Prometheus already collects — the backup
    alerts no longer depend on it, since failure and staleness alerting now runs
    through `ntfy`
-4. audit every service bound to `::` against the router's IPv6 policy, starting with Samba on `vault` and the Proxmox interface on `virt`
-5. restore GPU acceleration on `synthia`, which currently falls back to CPU inference
-6. reduce the concentration of edge roles on `rpi-01`, which now carries DNS, VPN, reverse proxy, and public ingress
-7. continue refining infrastructure documentation
-8. improve cable management in the rack
-9. continue using the environment as a platform for AI, automation, infrastructure, and security learning
+5. audit every service bound to `::` against the router's IPv6 policy, starting with Samba on `vault` and the Proxmox interface on `virt`
+6. restore GPU acceleration on `synthia`, which currently falls back to CPU inference
+7. reduce the concentration of edge roles on `rpi-01`, which now carries DNS, VPN, reverse proxy, and public ingress
+8. continue refining infrastructure documentation
+9. improve cable management in the rack
+10. continue using the environment as a platform for AI, automation, infrastructure, and security learning
 
 ### Recently completed
 
 - media storage migrated from `atlas` to `vault` over SMB
 - SMART and RAID health monitoring deployed on `vault` and scraped by `monitor`
 - `rpi-01` assigned a real workload: internal DNS, VPN, and reverse proxy
-- WireGuard deployed as a direct entry point into the homelab
+- WireGuard deployed as a direct entry point into the homelab, later replaced
+  by Tailscale (2026-08-29): subnet router on `rpi-01` advertising the LAN,
+  usable from IPv4-only networks behind the ISP's CGNAT, phone connecting
+  directly without relay
 - secondary DNS instance deployed on the `dns` VM, with failover tested
 - retired the DuckDNS vhost on `rpi-01` and added an explicit catch-all vhost,
   closing the direct serving path from the internet to the workstation
@@ -103,13 +106,14 @@ and no `rule_files`. This blocks failure detection for storage and backups alike
 - improve the overall structure of virtualized services
 
 ### Remote Access
-- use the DuckDNS hostname as the WireGuard client `Endpoint` so the tunnel
-  recovers on reconnect after an ISP address change, instead of requiring a
-  manual lookup and config edit
-- confirm what actually refreshes the DuckDNS record, since nothing on `rpi-01` does
-- document WireGuard peers and define a key rotation practice
-- confirm client profiles set `DNS` to AdGuard, or `.home.arpa` names fail to
-  resolve away from home even with the tunnel up
+- confirm split DNS (`home.arpa` → `192.168.1.30` in the Tailscale admin
+  panel) resolves internal names from the phone
+- remove the WireGuard leftovers: the router's inbound `51820/udp` IPv6 rule
+  and the `10.8.0.0/24` `ufw` allowances on `rpi-01`
+- decide which other devices join the tailnet (the workstation is a natural
+  next candidate)
+- write a service document for `rutina` (published at `rutina.home.arpa`,
+  backend on `atlas:8091`), which is currently undocumented
 - improve remote administration design over time
 
 ## Long-Term Goals

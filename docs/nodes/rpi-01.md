@@ -4,9 +4,9 @@
 
 `rpi-01` is the edge node of the homelab. Despite originally being introduced as
 an experimentation platform, it has become one of the most load-bearing nodes in
-the environment: it serves internal DNS, terminates the WireGuard VPN, runs the
-internal reverse proxy, and hosts the Cloudflare tunnel used to publish one
-project externally.
+the environment: it serves internal DNS, provides the Tailscale VPN entry into
+the LAN, runs the internal reverse proxy, and hosts the Cloudflare tunnel used
+to publish one project externally.
 
 It is still a Raspberry Pi and still useful for experimentation, but it should no
 longer be treated as a disposable lab node. Several core network functions depend
@@ -15,7 +15,7 @@ on it.
 ## Role
 
 - primary internal DNS (AdGuard Home)
-- WireGuard VPN endpoint
+- Tailscale VPN entry: subnet router advertising `192.168.1.0/24`
 - internal reverse proxy (nginx)
 - Cloudflare tunnel host
 - remote boot control for the workstation (Wake-on-LAN + PXE boot menu)
@@ -40,7 +40,7 @@ on it.
 |---|---|---|
 | AdGuard Home | Internal DNS resolution and filtering | `53`, admin UI on `8080` |
 | nginx | Internal reverse proxy, TLS termination | `80`, `443`, LAN and VPN only |
-| `wg-quick@wg0` | WireGuard VPN endpoint | `wg0`, `10.8.0.1/24` |
+| `tailscaled` | Tailscale subnet router for the LAN | outbound only; `tailscale0` |
 | `cloudflared` | Cloudflare tunnel to publish one vhost | outbound only |
 | `node_exporter` | Metrics for Prometheus | `9100` |
 | AdGuard Home — DoT | Encrypted DNS with the internal certificate | `853`, LAN and VPN only |
@@ -54,7 +54,9 @@ The remote boot stack (dnsmasq config, TFTP tree, and the `wake-pc` /
 ## Networking
 
 - LAN address: `192.168.1.30`
-- VPN interface: `wg0` at `10.8.0.1/24`
+- VPN interface: `tailscale0` (Tailscale, since 2026-08-29)
+- `wg0` no longer exists: `wg-quick@wg0` is disabled, with its configuration
+  retained in `/etc/wireguard/` and in the nightly backup
 - `wlan0` is present but down; the node runs on wired Ethernet
 
 ## Reverse Proxy Configuration
@@ -130,10 +132,12 @@ for every internal service, so it adds no new class of risk.
 
 ## Dynamic DNS
 
-The VPN entry point is reachable only over IPv6, on a prefix the ISP rotates
-roughly monthly. `homelab-ddns.timer` runs every five minutes and publishes this
-node's current address as an `AAAA` record, so client `Endpoint` settings can be
-a name and never need editing.
+This existed for WireGuard, whose entry point was reachable only over IPv6 on
+a prefix the ISP rotates roughly monthly: `homelab-ddns.timer` runs every five
+minutes and publishes this node's current address as an `AAAA` record, so
+client `Endpoint` settings could be a name and never need editing. With
+WireGuard disabled in favour of Tailscale the record serves no active purpose,
+but the updater is harmless and stays in case WireGuard returns.
 
 | Path | Purpose |
 |---|---|
@@ -197,9 +201,12 @@ The concentration of roles on this node creates real exposure:
 - **No tier isolation.** The node that accepts public traffic through the
   Cloudflare tunnel is the same node that serves internal DNS and terminates the
   VPN. A compromise at the edge lands directly on an internal service host.
-- **Undocumented VPN peers.** The WireGuard peer list and key rotation policy are
-  not recorded anywhere. Client profiles also need `DNS` pointing at AdGuard, or
-  `.home.arpa` names fail to resolve away from home even though the tunnel is up.
+- **Remote access depends on Tailscale's control plane.** Device inventory and
+  route approval live in the Tailscale admin console rather than in this
+  repository. An outage there costs new connections, not established ones.
+  Tailnet clients also need the split-DNS entry (`home.arpa` →
+  `192.168.1.30`) in the admin panel, or `.home.arpa` names fail to resolve
+  away from home even though the tunnel is up.
 - **The CA root key is a single point of failure.** Losing it does not destroy
   data, but it forces creating a new authority and reinstalling it on every
   device by hand. It is included in the configuration backup for that reason.
@@ -211,9 +218,8 @@ The concentration of roles on this node creates real exposure:
 - serve the remaining internal names over TLS with the internal certificate,
   which now costs nothing extra per name
 - keep the current edge services as the node's primary role
-- record the WireGuard peer inventory and confirm client profiles set `DNS`
-- use the DuckDNS hostname as the WireGuard client `Endpoint` so the tunnel
-  recovers on reconnect instead of requiring a manual address lookup
+- remove the WireGuard leftovers (router rule, `ufw` allowances) once Tailscale
+  has proven itself for a while
 - evaluate whether public exposure should move off this node
 - rename the nginx site files to match their `server_name`
 - retain cluster and Kubernetes experimentation as a longer-term goal

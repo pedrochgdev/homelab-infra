@@ -5,8 +5,9 @@
 The homelab currently operates on a single flat LAN with static addressing for infrastructure nodes and a separate DHCP pool for non-lab devices. Network segmentation has not yet been introduced, but future work is expected to include VLAN design and more formal network separation.
 
 Most services are internal-only, but the network is no longer strictly internal:
-`rpi-01` acts as an edge node providing internal DNS, a WireGuard VPN endpoint, a
-reverse proxy, and a Cloudflare tunnel that publishes one project externally. See
+`rpi-01` acts as an edge node providing internal DNS, the Tailscale VPN entry
+(a subnet router for the LAN), a reverse proxy, and a Cloudflare tunnel that
+publishes one project externally. See
 [Access Model](#access-model) for the full picture.
 
 ## Primary Network
@@ -87,6 +88,7 @@ reverse proxy on `rpi-01`.
 | `pass.home.arpa` | `https://192.168.1.22:8222` (Vaultwarden, over TLS) |
 | `ca.home.arpa` | Static: the internal CA root certificate |
 | `tarjeta.home.arpa` | `http://192.168.1.22:8090` (Tarjetero, over TLS) |
+| `rutina.home.arpa` | `http://192.168.1.22:8091` (Rutina, over TLS) |
 
 `osiris.home.arpa` is the Jellyfin vhost — "Osiris" is the Jellyfin server's
 own configured name. Earlier revisions recorded it as a second alias of the
@@ -97,9 +99,9 @@ All `.home.arpa` names resolve through a single wildcard rewrite in AdGuard,
 `*.home.arpa → 192.168.1.30`, present on both instances. Adding a name therefore
 requires an nginx vhost and no DNS change at all.
 
-`pass.home.arpa` and `tarjeta.home.arpa` are served over `443` with a
-certificate signed by the internal CA on `rpi-01`; the latter also redirects
-`80` to `443`. The other names are still plain `80`; extending the certificate
+`pass.home.arpa`, `tarjeta.home.arpa` and `rutina.home.arpa` are served over
+`443` with a certificate signed by the internal CA on `rpi-01`, with `80`
+redirecting to `443`. The other names are still plain `80`; extending the certificate
 to them costs nothing further and is listed under planned work.
 
 Note for any future vhost on this node: nginx here is `1.24.0`, which predates
@@ -111,21 +113,37 @@ reload. Declare it the old way, `listen 443 ssl http2;`.
 
 There are currently three distinct remote access paths:
 
-**WireGuard.** `rpi-01` terminates a WireGuard tunnel on `wg0`, subnet
-`10.8.0.0/24`, with the node itself at `10.8.0.1`. This is a direct VPN entry
-point into the homelab LAN.
+**Tailscale.** Since 2026-08-29 the VPN is Tailscale. `tailscaled` on `rpi-01`
+acts as a subnet router advertising `192.168.1.0/24`, so any device in the
+tailnet reaches the entire LAN, not just the node. Because every connection is
+outbound (WireGuard-based NAT traversal through Tailscale's coordination
+servers), it works from IPv4-only networks and behind the ISP's carrier-grade
+NAT — exactly the limitation that made plain WireGuard unusable away from
+IPv6-capable networks. The first client, a phone, established a direct
+connection with no DERP relay in the path.
 
-**It reaches the node over IPv6 only, and that is not a choice.** The connection
-is behind carrier-grade NAT — a traceroute leaves the router into three
+Node-side configuration worth recording: `--advertise-routes=192.168.1.0/24`
+(the subnet route must also be approved in the admin console),
+`--accept-dns=false` so the node keeps its own resolver, and
+`--operator=drocho` so status can be queried without root. `ufw` additionally
+allows traffic in on `tailscale0` and forwarding from `tailscale0` to `eth0`.
+
+`.home.arpa` names do not resolve for tailnet clients by themselves — their DNS
+never touches AdGuard. The fix is split DNS in the Tailscale admin panel:
+domain `home.arpa` → nameserver `192.168.1.30`. Without it, clients reach
+services by IP only.
+
+**WireGuard — disabled 2026-08-29.** Until then `rpi-01` terminated a WireGuard
+tunnel on `wg0` (`10.8.0.0/24`, node at `10.8.0.1`). It was replaced because it
+was reachable **over IPv6 only, and that was not a choice**: the connection is
+behind carrier-grade NAT — a traceroute leaves the router into three
 consecutive hops in `10.0.0.0/8` — so no inbound IPv4 path exists or can be
-created. The router reflects this exactly: `DEFAULTWAN` on `ppp0` drops all
-inbound with zero exceptions, while `DEFAULTWANv6` drops all inbound except a
-single rule permitting `UDP 51820` to the `/128` of `rpi-01`.
-
-The practical consequence: **the VPN cannot be used from a network without IPv6**,
-which includes most university and corporate WiFi. The fallback is mobile data.
-Fixing that would mean an outbound-connection design — a rented relay, or
-Cloudflare WARP — and has been deliberately deferred.
+created. A VPN that cannot be used from a network without IPv6 (most university
+and corporate WiFi) kept failing exactly when it was needed. The service is
+disabled, not removed: configuration and peer keys remain in `/etc/wireguard/`
+and in the nightly configuration backup, so reverting is a `systemctl enable
+--now wg-quick@wg0` plus the router rule. The router's inbound IPv6 allowance
+for `UDP 51820` no longer serves anything and should be removed.
 
 The ISP rotates the delegated prefix roughly monthly, sometimes twice within
 days:
@@ -142,11 +160,6 @@ roughly 24 hours after a rotation the old address is still present but deprecate
 — which is why anything selecting an address must exclude deprecated and
 temporary ones rather than taking the first it finds.
 
-**Tailscale.** Earlier revisions of this document listed Tailscale as a live
-remote access path. That is not the case: it is installed on none of the homelab
-nodes and none of the workstations. Either it was removed or it was documented
-from intent rather than from the running system. WireGuard is the only VPN.
-
 **Cloudflare tunnel.** `cloudflared` runs on `rpi-01` and is the only intended
 public entry point. It establishes an outbound connection to Cloudflare and
 publishes a single external hostname to the local nginx instance on
@@ -155,8 +168,10 @@ workstation (`192.168.1.109`), not to homelab infrastructure. TLS is terminated
 by Cloudflare, so no certificate is managed locally for this path.
 
 **Dynamic DNS.** `rpi-01` publishes its own global IPv6 address as an `AAAA`
-record, so the WireGuard `Endpoint` on client devices is a name rather than an
-address that expires. Earlier revisions of this document said the updater "lives
+record; it existed so the WireGuard `Endpoint` on client devices was a name
+rather than an address that expires. With WireGuard disabled the record serves
+no active purpose — Tailscale needs no inbound address at all — but the updater
+is harmless and is left running in case WireGuard returns. Earlier revisions of this document said the updater "lives
 elsewhere, most likely the router". It does not, and never did: it has always run
 on `rpi-01`.
 
@@ -289,9 +304,10 @@ This means two different places in the router need checking, and only one of the
 is "port forwarding":
 
 **IPv4 — port forwarding.** NAT means an explicit rule is needed for anything to
-reach a host inside. Expect to find `51820/udp → 192.168.1.30` here. **That rule
-must stay**: it is what makes WireGuard reachable, and removing it costs remote
-access to the entire homelab. Remove `80` or `443` entries if any exist.
+reach a host inside. Expect to find `51820/udp → 192.168.1.30` here. That rule
+carried WireGuard; since the move to Tailscale (outbound-only) on 2026-08-29 it
+protects nothing and **can be removed along with the rest**. Remove `80` or
+`443` entries if any exist.
 
 **IPv6 — firewall.** There is no NAT in IPv6; every node already holds its own
 globally routable address, so nothing is being "forwarded". A router firewall
@@ -395,7 +411,7 @@ from `virt`.
 80/tcp           ALLOW  10.8.0.0/24
 443/tcp          ALLOW  192.168.1.0/24
 443/tcp          ALLOW  10.8.0.0/24
-51820/udp        ALLOW  Anywhere            (WireGuard, necessarily public)
+51820/udp        ALLOW  Anywhere            (WireGuard; removable since the move to Tailscale)
 9100/tcp         ALLOW  192.168.1.50
 69/udp           ALLOW  192.168.1.0/24      (TFTP)
 4011/udp         ALLOW  192.168.1.0/24      (PXE)
@@ -403,9 +419,12 @@ from `virt`.
 67/udp on eth0   ALLOW  Anywhere            (PXE DHCP, source is 0.0.0.0)
 ```
 
-`51820/udp` is open to the world by necessity — it is the VPN entry point, and it
-answers only to peers holding a valid key. The two `Anywhere` rules that did not
-belong were removed on 2026-08-13; see [Retired Exposure](#retired-exposure).
+`51820/udp` was open to the world by necessity while WireGuard was the VPN
+entry point; with WireGuard disabled it answers nothing and can be removed,
+together with the `10.8.0.0/24` allowances above. Tailscale added two rules not
+yet shown in this listing: `allow in on tailscale0` and a route allowance from
+`tailscale0` to `eth0`. The two `Anywhere` rules that did not belong were
+removed on 2026-08-13; see [Retired Exposure](#retired-exposure).
 
 The `69`, `4011`, `10000:10100` and `67` rules belong to the remote boot service,
 documented in [`docs/services/remote-boot.md`](services/remote-boot.md).
@@ -461,8 +480,8 @@ The rule sets on the nodes other than `vault` have not been recorded here yet.
 - services bound to `::` have not been audited against the router's IPv6 policy; `vault` listens on `[::]:445` for Samba and `virt` exposes the Proxmox interface on `*:8006`
 - public exposure terminates on the same node that serves internal DNS and VPN, so the edge tier has no isolation from the internal tier
 - the reverse proxy depends on a workstation address inside the DHCP pool
-- WireGuard peer inventory is not documented
-- remote access has no path that works from an IPv4-only network, so a WiFi without IPv6 means falling back to mobile data
+- remote access now depends on Tailscale's coordination service, a third party; the outage mode is losing new connections, since established tunnels are peer-to-peer
+- the WireGuard leftovers (router rule for `51820`, `ufw` allowances for `10.8.0.0/24`) are still in place though nothing uses them
 
 ## Planned Network Improvements
 
@@ -472,7 +491,7 @@ The rule sets on the nodes other than `vault` have not been recorded here yet.
 - serve the remaining internal hostnames over TLS using the internal CA
 - record the `ufw` rules of `atlas`, `monitor` and `synthia`
 - give the workstation a static address or DHCP reservation
-- document WireGuard peers and key rotation
+- remove the WireGuard leftovers: the router's `51820/udp` IPv6 rule and the `10.8.0.0/24` `ufw` allowances
 - create a more professional network layout
 - formalize service exposure and access boundaries
 - expand network documentation as topology becomes more structured
